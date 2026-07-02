@@ -12,6 +12,14 @@
 - `MINOR`：新增向后兼容能力、命令、模块导入能力、AI/NPC 工作流或配置项时递增。
 - `PATCH`：修复缺陷、补文档、优化测试、调整日志或内部实现且不改变用户契约时递增。
 
+准备提交源码、配置或 Skill 行为变更时，先用 npm 的版本命令自动递增版本号，保证 `package.json` 和 `package-lock.json` 同步：
+
+```powershell
+npm.cmd version patch --no-git-tag-version
+```
+
+根据变更类型把 `patch` 替换为 `minor` 或 `major`。普通修复、内部兼容调整和测试补强默认用 `patch`；新增向后兼容能力用 `minor`；破坏性变更用 `major`。纯文档或规则同步只更新 `CHANGELOG.md`，不自动递增版本号，除非用户明确要求发版。
+
 ## 日志结构
 
 `CHANGELOG.md` 必须保留一个 `[Unreleased]` 区块。每次开发先把变更写入 `[Unreleased]`，发布时再移动到具体版本：
@@ -51,7 +59,7 @@
 
 发布提交应同时包含：
 
-- `package.json` 版本号更新。
+- `package.json` 和 `package-lock.json` 版本号更新。
 - `CHANGELOG.md` 从 `[Unreleased]` 归档到新版本。
 - 必要的迁移说明或配置变更说明。
 - `npm.cmd test` 和 `npm.cmd run typecheck` 的结果。

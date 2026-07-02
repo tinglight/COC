@@ -1,5 +1,14 @@
 # Project Instructions
 
+## Versioning and Commit Log
+
+- Before committing source, configuration, skill, or user-facing documentation changes, update `CHANGELOG.md` under `[Unreleased]` with the actual change and validation notes.
+- Before committing source, configuration, or skill behavior changes, increment the project version with `npm.cmd version <major|minor|patch> --no-git-tag-version`; use `patch` for fixes/internal-compatible changes, `minor` for new backward-compatible capabilities, and `major` for breaking command/config/data/skill-contract changes.
+- Commit the resulting `package.json`, `package-lock.json`, and `CHANGELOG.md` changes together with the related work.
+- For pure docs/rule-only commits, update `CHANGELOG.md` but do not bump the version unless the user explicitly asks for a release.
+- Do not create or push a Git tag unless the user explicitly asks for a release/tag.
+- Follow `docs/VERSION_LOG_RULES.md` for changelog categories, validation entries, and release archive format.
+
 ## Skills
 
 - Create project-specific Codex skills under `skills/<skill-name>/` in this repository by default.
