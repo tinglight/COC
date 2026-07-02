@@ -1,0 +1,4 @@
+interface:
+  display_name: "COC Module Importer"
+  short_description: "Import modules into campaign state"
+  default_prompt: "Use $coc-module-importer to import this scenario and maintain canon-safe session records."

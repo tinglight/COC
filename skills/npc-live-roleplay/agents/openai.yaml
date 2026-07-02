@@ -1,0 +1,4 @@
+interface:
+  display_name: "NPC Live Roleplay"
+  short_description: "Train NPC replies to feel like real table play"
+  default_prompt: "Use $npc-live-roleplay to revise NPC dialogue using table-play feedback."
