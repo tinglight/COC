@@ -3,11 +3,12 @@ import path from "node:path";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import type { AppConfig } from "./config.js";
 import { createAiImageClient, createAiReplyClient, type AiImageClient, type AiReplyClient } from "./ai/client.js";
-import { handleCommand } from "./commands/handler.js";
-import { buildLocalModuleKnowledgeInstructions } from "./moduleKnowledge.js";
+import { getContextRole, handleCommand, resolveEffectiveCommandContext, type PrivateMessageSender } from "./commands/handler.js";
+import { buildAiContextInstructions, isMemorySkillText, rememberImportantPlayerStatement } from "./narrativeContext.js";
 import { ProactiveChatScheduler } from "./proactive.js";
 import { SlidingWindowRateLimiter } from "./rateLimit.js";
 import type { BotStorage } from "./storage.js";
+import { canUseAiCommands, formatMemberRole } from "./roles.js";
 import { QQOpenApiClient } from "./qq/client.js";
 import { signValidationResponse, verifyWebhookSignature } from "./qq/signature.js";
 import type { MessageTarget, QQMessageEvent, QQPayload, QQValidationRequest } from "./qq/types.js";
@@ -23,8 +24,22 @@ export interface ServerDeps {
 export function createApp(deps: ServerDeps): FastifyInstance {
   const app = Fastify({ logger: true, routerOptions: { ignoreTrailingSlash: true } });
   const qqClient = deps.qqClient ?? new QQOpenApiClient(deps.config);
-  const aiClient = deps.aiClient ?? createAiReplyClient(deps.config);
+  const aiClient = deps.aiClient ?? createAiReplyClient(deps.config, app.log);
   const imageClient = deps.imageClient ?? createAiImageClient(deps.config);
+  const privateDeliveryLimiter = new SlidingWindowRateLimiter(4, 60_000);
+  const privateMessenger: PrivateMessageSender = async (message) => {
+    const limit = privateDeliveryLimiter.check(message.privateUserId);
+    if (!limit.allowed) {
+      throw new Error(`本机私聊发送过快，请约 ${Math.ceil(limit.retryAfterMs / 1000)} 秒后再试`);
+    }
+    await qqClient.sendTextMessage(
+      { type: "c2c", userOpenid: message.privateUserId },
+      message.content,
+      undefined,
+      1,
+      { isWakeup: true }
+    );
+  };
   const proactiveChat = new ProactiveChatScheduler({
     config: deps.config,
     qqClient,
@@ -96,6 +111,13 @@ export function createApp(deps: ServerDeps): FastifyInstance {
 
     if (payload.op !== 0) return ack();
 
+    const settingEvent = normalizePrivateMessageSettingEvent(payload);
+    if (settingEvent) {
+      deps.storage.setPrivateActiveMessagesAllowed(settingEvent.userOpenid, settingEvent.allowed);
+      request.log.info(settingEvent, "QQ private message setting event");
+      return ack();
+    }
+
     const event = normalizeMessageEvent(payload);
     if (!event) return ack();
     if (event.message.author?.bot) return ack();
@@ -103,22 +125,30 @@ export function createApp(deps: ServerDeps): FastifyInstance {
       request.log.info({ target: event.target }, "Ignored message from non-allowed group");
       return ack();
     }
+    request.log.info({ type: payload.t, target: event.target, context: event.context }, "QQ message event");
+    const processedKey = `${payload.t ?? "UNKNOWN"}:${event.message.id}`;
+    if (!deps.storage.markMessageProcessed(processedKey)) {
+      request.log.info({ processedKey }, "Ignored duplicate QQ message event");
+      return ack();
+    }
+
     const incomingText = cleanIncomingContent(event.message.content);
+    if (event.target.type === "c2c") {
+      deps.storage.recordPrivateActivity(event.target.userOpenid);
+    }
     if (event.target.type === "group") {
       proactiveChat.recordGroupActivity(event.target.groupOpenid, incomingText);
     }
 
-    request.log.info({ type: payload.t, target: event.target, context: event.context }, "QQ message event");
-    const processedKey = `${payload.t ?? "UNKNOWN"}:${event.message.id}`;
-    if (deps.storage.isMessageProcessed(processedKey)) return ack();
-
     const replyRequest = classifyReplyRequest(incomingText, payload.t, event.target, deps.config);
+    if (event.target.type === "group" && shouldRecordTableMessage(incomingText, replyRequest)) {
+      deps.storage.addTableMessage(event.target.groupOpenid, event.context.userId, incomingText);
+      rememberImportantPlayerStatement(deps.storage, event.context, incomingText, "table_message");
+    }
     if (!replyRequest) {
-      deps.storage.markMessageProcessed(processedKey);
       return ack();
     }
     if (replyRequest.kind === "ai" && !aiClient) {
-      deps.storage.markMessageProcessed(processedKey);
       return ack();
     }
 
@@ -128,32 +158,46 @@ export function createApp(deps: ServerDeps): FastifyInstance {
     if (!userLimit.allowed) {
       responseText = `指令太快了，请 ${Math.ceil(userLimit.retryAfterMs / 1000)} 秒后再试。`;
     } else if (replyRequest.kind === "ai") {
-      try {
-        responseText = await aiClient!.createReply({
-          text: replyRequest.text,
-          scopeType: event.context.scopeType,
-          scopeId: event.context.scopeId,
-          userId: event.context.userId,
-          trigger: replyRequest.trigger,
-          instructions: buildLocalModuleKnowledgeInstructions(replyRequest.text)
-        });
-      } catch (error) {
-        request.log.error({ err: error }, "AI reply failed");
-        responseText = "AI 回复失败，请稍后再试。";
+      const effectiveContext = resolveEffectiveCommandContext(event.context, deps.storage);
+      const speakerRole = getContextRole(effectiveContext, deps.storage);
+      if (!canUseAiCommands(speakerRole)) {
+        responseText = `当前身份是 ${formatMemberRole(speakerRole)}，不能调用 AI 指令。请联系 KP 调整身份。`;
+      } else {
+        try {
+          responseText = await aiClient!.createReply({
+            text: replyRequest.text,
+            scopeType: effectiveContext.scopeType,
+            scopeId: effectiveContext.scopeId,
+            userId: effectiveContext.userId,
+            speakerRole,
+            trigger: replyRequest.trigger,
+            instructions: buildAiContextInstructions({
+              userText: replyRequest.text,
+              storage: deps.storage,
+              context: effectiveContext,
+              speakerRole
+            })
+          });
+        } catch (error) {
+          request.log.error({ err: error }, "AI reply failed");
+          responseText = "AI 回复失败，请稍后再试。";
+        }
       }
     } else {
-      responseText = await handleCommand(replyRequest.text, event.context, { storage: deps.storage, aiClient });
+      responseText = await handleCommand(replyRequest.text, event.context, {
+        storage: deps.storage,
+        aiClient,
+        privateMessenger
+      });
     }
 
     if (!responseText) {
-      deps.storage.markMessageProcessed(processedKey);
       return ack();
     }
     if (event.target.type === "group") {
       const groupLimit = groupLimiter.check(event.target.groupOpenid);
       if (!groupLimit.allowed) {
         request.log.warn({ retryAfterMs: groupLimit.retryAfterMs }, "Skipped reply due to group rate limit");
-        deps.storage.markMessageProcessed(processedKey);
         return ack();
       }
     }
@@ -161,17 +205,24 @@ export function createApp(deps: ServerDeps): FastifyInstance {
     try {
       await qqClient.sendTextMessage(event.target, responseText, event.message.id, 1);
       if (replyRequest.kind === "ai") {
+        const effectiveContext = resolveEffectiveCommandContext(event.context, deps.storage);
+        const speakerRole = getContextRole(effectiveContext, deps.storage);
         deps.storage.addNarrativeEvent({
           kind: "ai_reply",
-          scopeType: event.context.scopeType,
-          scopeId: event.context.scopeId,
-          userId: event.context.userId,
+          scopeType: effectiveContext.scopeType,
+          scopeId: effectiveContext.scopeId,
+          userId: effectiveContext.userId,
           inputText: replyRequest.text,
           outputText: responseText,
-          metadata: { trigger: replyRequest.trigger }
+          metadata: {
+            trigger: replyRequest.trigger,
+            speakerRole,
+            sourceScopeType: event.context.scopeType,
+            boundFromC2c: effectiveContext.boundFromC2c || undefined
+          }
         });
+        rememberImportantPlayerStatement(deps.storage, effectiveContext, replyRequest.text, `ai_${replyRequest.trigger}`);
       }
-      deps.storage.markMessageProcessed(processedKey);
     } catch (error) {
       request.log.error({ err: error, target: event.target, processedKey }, "Failed to send QQ reply");
       throw error;
@@ -285,8 +336,33 @@ function normalizeMessageEvent(payload: QQPayload): {
   return undefined;
 }
 
+function normalizePrivateMessageSettingEvent(payload: QQPayload): { userOpenid: string; allowed: boolean } | undefined {
+  if (payload.t !== "C2C_MSG_REJECT" && payload.t !== "C2C_MSG_RECEIVE" && payload.t !== "FRIEND_DEL") {
+    return undefined;
+  }
+  const userOpenid = extractUserOpenid(payload.d);
+  if (!userOpenid) return undefined;
+  return {
+    userOpenid,
+    allowed: payload.t === "C2C_MSG_RECEIVE"
+  };
+}
+
+function extractUserOpenid(value: unknown): string | undefined {
+  if (value == null || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  const direct = record.user_openid ?? record.openid ?? record.open_id;
+  if (typeof direct === "string" && direct.trim() !== "") return direct.trim();
+  const author = record.author;
+  if (author != null && typeof author === "object") {
+    const authorOpenid = (author as Record<string, unknown>).user_openid;
+    if (typeof authorOpenid === "string" && authorOpenid.trim() !== "") return authorOpenid.trim();
+  }
+  return undefined;
+}
+
 function cleanIncomingContent(content: string): string {
-  return content.replace(/<@![^>]+>/g, "").replace(/<@[^>]+>/g, "").trim();
+  return content.replace(/^\s*<@![^>]+>\s*/, "").replace(/^\s*<@[^>]+>\s*/, "").trim();
 }
 
 type ReplyRequest =
@@ -301,12 +377,19 @@ function classifyReplyRequest(
 ): ReplyRequest | undefined {
   if (text === "") return undefined;
   if (text.startsWith(".")) return { kind: "command", text };
+  if (shouldAutoAiReply(payloadType, target, config) && isMemorySkillText(text)) {
+    return { kind: "command", text: `.mem ${text}` };
+  }
   if (!shouldAutoAiReply(payloadType, target, config)) return undefined;
   return {
     kind: "ai",
     text,
     trigger: target.type === "c2c" ? "c2c" : config.aiReplyMode === "all" ? "all" : "mention"
   };
+}
+
+function shouldRecordTableMessage(text: string, replyRequest: ReplyRequest | undefined): boolean {
+  return text !== "" && !text.startsWith(".") && replyRequest == null;
 }
 
 function shouldAutoAiReply(payloadType: string | undefined, target: MessageTarget, config: AppConfig): boolean {

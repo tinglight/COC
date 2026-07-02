@@ -10,6 +10,7 @@
 - **CoC 规则工具层**：本地处理掷骰、技能检定、SAN Check、角色卡保存和 Excel 角色卡导入，规则结果不交给模型编造。
 - **AI KP 助手层**：`.ai` 和 @机器人可以命中本地已导入模组与当前 campaign 状态；主动故事会参考叙事历史，延续中文跑团氛围。
 - **模组知识层**：`skills/coc-module-importer` 将 DOCX/Markdown/text 模组拆成只读 canon 与可变 campaign，供后续问答、备团、分支追踪和 KP 改写使用。
+- **人格设定层**：`skills/persona-style-builder` 将松散人物设定沉淀为 NPC 角色卡、口吻规则、知识边界和可执行运行提示。
 - **NPC 扮演层**：`.npc` 与 `skills/npc-live-roleplay` 负责把 NPC 角色卡、知识边界、人格口吻和真人桌边训练规则结合起来，生成可直接发到 QQ 的扮演回复。
 - **叙事记忆层**：NPC 回复、AI 回复、主动故事等会写入 SQLite 的 `narrative_events`，避免服务重启后丢失上下文。
 
@@ -21,7 +22,10 @@
 - `.sc 0/1d6 60` San Check
 - `.ai 帮我描写一个地下室` 调用 OpenAI 模型回复
 - `.ai 粗略介绍一下W列车这个模组` 命中本地已导入模组资料后优先按项目内 canon/campaign 信息回答
+- `.register KP|PL|OB` / `.role @成员 KP|PL|OB` 登记跑团身份；`.bind KP|PL|OB` 生成带身份的私聊绑定码
 - `.npc 张管家 玩家问：昨晚钟楼亮灯时你在哪里？` 使用本地 NPC 训练 Skill 生成扮演回复
+- `.secret @成员 秘密线索` / `.npcdm 张管家 @成员 玩家问：...` 给已授权玩家发送 KP 秘密私聊或 NPC 私聊
+- `.pm on` / `.pm off` / `.inbox` 供玩家在 C2C 私聊中开启、关闭或领取待取私密消息
 - `.train show` / `.train note ...` 查看或追加 NPC 真人感训练记录
 - `.st 侦查60 聆听50 san60` 保存角色卡
 - `.show` 查看角色卡
@@ -34,6 +38,7 @@
 
 - [NPC Skill 与人格规则](docs/NPC_SKILL.md)：NPC 回复、知识边界、防剧透、叙事入库和主动故事规则。
 - [coc-module-importer Skill](skills/coc-module-importer/SKILL.md)：模组导入、canon/campaign 分层、跑团状态记录和 KP 改写规则。
+- [persona-style-builder Skill](skills/persona-style-builder/SKILL.md)：NPC 人格卡、口吻规则、知识边界和可执行运行提示。
 - [npc-live-roleplay Skill](skills/npc-live-roleplay/SKILL.md)：NPC 真人桌边感、括号式 OOC、训练反馈和风格修正。
 
 ## NPC、模组与 AI 扩展
@@ -41,11 +46,35 @@
 - GPT 接入后，普通骰子指令仍由本地逻辑处理，`.ai` 或 `@机器人` 消息可交给模型回复。
 - `.ai` 会尝试从 `data/module_imports` 匹配本地已导入模组；命中后会把模组基础信息、实体索引、PC/DIY 分支、规则候选和当前 campaign 状态作为模型约束。
 - NPC 扮演按项目文档里的 [NPC Skill 与人格规则](docs/NPC_SKILL.md) 设计：每个 NPC 有角色卡、知识边界、动机、状态、防剧透规则，以及可选的括号式桌边发言。
+- NPC 人格卡和运行提示按 [persona-style-builder Skill](skills/persona-style-builder/SKILL.md) 整理，避免把临时口吻、隐藏知识和运行时行为规则散落在 C 盘个人 skill 或一次性对话里。
 - 模组导入按 [coc-module-importer Skill](skills/coc-module-importer/SKILL.md) 设计：原文事实、隐藏真相、规则和结局保存在只读 `canon/`；KP 改写、PC 影响、NPC 关系和世界变化保存在 `campaign/`。
 - 真人感 NPC 对话训练沉淀在 [npc-live-roleplay Skill](skills/npc-live-roleplay/SKILL.md)，评分样例和修正规则在它的 `references` 资料库中。
 - 当前支持 KP 可控模式，例如 `.npc 张管家 玩家问：昨晚钟楼亮灯时你在哪里？`。机器人会把本地 Skill、桌边风格规则和训练日志作为模型约束，但只把可发送的回复发回 QQ。
 - NPC 回复、`.ai` / @AI 回复、主动故事等叙事类输出会写入 SQLite 的 `narrative_events`，作为后续连续性和记忆检索依据。
+- 桌边记忆技能支持 `.记住 角色决定保护同伴；用在：同伴遇险时`，也支持群里 @机器人说“记住：……；用在：……”。后续 AI 回复会优先参考当前发言者记忆，并补充同团其他玩家/全团关键记忆。
 - `.train 回复太像 AI，3/10，请改得更像真人桌边扮演` 可让模型按训练 Skill 做反馈/改写；`.train show` 查看训练记录摘录；`.train note 这次教训：...` 会追加到本地训练日志。
+
+## 跑团身份权限
+
+机器人按同一套身份处理群聊和已绑定私聊：
+
+- `KP`：管理者/守密人，可以使用全部指令，查看全团记录和 keeper-only 辅助资料。
+- `PL`：参与者，可以使用普通跑团和 AI 辅助，但 AI 上下文不会包含其他 PL 的聊天/记忆或模组秘密。
+- `OB`：围观者，不参与游戏，默认不能调用 AI、NPC、秘密私聊和训练类指令。
+
+首次开团时可由 KP 在群里发送 `.register KP` 或 `.bind KP` 完成自登记；已有 KP 后，只有 KP 可以用 `.role @成员 KP|PL|OB` 调整其他人的身份。
+
+## KP 秘密私聊与 NPC 私聊
+
+私密投递是 opt-in 设计，不会因为玩家在群里出现就自动私聊：
+
+1. 玩家先在群里发送 `.bind PL`、`.bind KP` 或 `.bind OB`，拿到带身份的绑定码。
+2. 玩家私聊机器人发送 `.bind 绑定码`，把 C2C openid 绑定到这个群成员身份。
+3. 玩家继续私聊发送 `.pm on`，明确允许接收 KP 秘密私聊；`.pm off` 可随时关闭。
+4. KP 在群里或已绑定群上下文的私聊中发送 `.secret @成员 你在镜子背后看到了一行旧字。`
+5. KP 也可以发送 `.npcdm 张管家 @成员 玩家问：你为什么怕钟声？`，机器人会先生成 NPC 私聊台词，再投递给指定玩家。
+
+为了降低 QQ 主动私聊风控风险，程序会检查玩家是否已 `.pm on`、是否仍在 30 天 C2C 互动窗口内、QQ 是否发来主动私聊拒收事件，以及本地 30 天主动投递保护额度。不能主动发送时，消息会留在玩家私聊收件箱；玩家私聊发送 `.inbox` 后用被动回复领取。
 
 ## 模组导入与 KP 助手
 
@@ -74,6 +103,15 @@ python .\skills\coc-module-importer\scripts\check_canon_lock.py ".\data\module_i
 
 当 `.ai` 文本提到已导入模组的名称、别名、组织或地点时，机器人会优先使用本地模组索引和当前 campaign 状态回答；资料不足时应明确说本地索引没有，不用外部网站或模型记忆补全。
 
+注意：`data/` 是运行时资料目录，已被 `.gitignore` 排除。排查“是否真的导入过某个模组”时不要只看 `rg --files` 的仓库跟踪结果，要直接检查本机目录：
+
+```powershell
+Get-ChildItem .\data\module_imports -Directory
+Get-Content .\data\module_imports\<module-id>\canon\module_index.json -Raw -Encoding UTF8 | ConvertFrom-Json
+```
+
+如果 `module_index.json` 临时不可读，`.ai` 会尝试从同目录的 `canon/source_text.json` 和 `module_manifest.json` 降级恢复基础摘要；精确规则仍以 `canon/source_text.json` 源块和 `canon/canon_lock.md` 为准。
+
 ## 设计边界
 
 - 骰子、技能检定、SAN Check 和角色卡数值由本地代码处理，AI 不能编造骰点或规则结果。
@@ -89,9 +127,12 @@ python .\skills\coc-module-importer\scripts\check_canon_lock.py ".\data\module_i
 ```env
 OPENAI_API_KEY=你的key
 OPENAI_MODEL=gpt-5.5
+OPENAI_REASONING_EFFORT=medium
 AI_REPLY_MODE=mention
 AI_MAX_REPLY_CHARS=900
 ```
+
+`OPENAI_REASONING_EFFORT` controls the Responses API reasoning budget. Use `xhigh` to try the highest setting; supported values are `none`, `minimal`, `low`, `medium`, `high`, and `xhigh`.
 
 触发模式：
 
@@ -141,6 +182,8 @@ OPENAI_IMAGE_OUTPUT_FORMAT=png
 
 主动故事发送成功后会同时写入主动故事轻量历史和统一叙事事件表，避免服务重启后忘记前文或重复同一段悬念。
 
+主动故事现在会按轮次套用多套短叙事循环，包括慢燃伏笔/爆点/反转、Freytag/三幕式、英雄旅程调查版和起承转合式结构。每轮都会给模型一个“当前剧情任务”和“人物/世界扩张任务”，要求故事产生具体变化，并避免长期只围绕同两个人反复出场。
+
 ## 本机启动
 
 ```powershell
@@ -172,6 +215,28 @@ https://xxxx.trycloudflare.com/qq/webhook
 ```
 
 如果没有安装 `cloudflared`，也可以用 ngrok、frp 或其它能提供公网 HTTPS 的隧道工具。
+
+## 本机排查踩坑记录
+
+- PowerShell 会先解析命令行引号，再把参数传给 Node。查 SQLite 时不要用 `node -e "..."` 嵌很长的 JS/SQL；一旦 SQL 或 JS 里还有引号，PowerShell 可能先把它们剥掉，导致实际执行内容和肉眼看到的不一致。
+- 项目提供了只读查库脚本，优先用 stdin 或 `.sql` 文件喂 SQL，避开 `node -e` 和多层引号转义：
+
+```powershell
+@'
+SELECT id, kind, scope_type, scope_id, actor_name, substr(output_text, 1, 80) AS output_preview, created_at
+FROM narrative_events
+ORDER BY id DESC
+LIMIT 10;
+'@ | npm.cmd --silent run db:query -- --format table
+```
+
+- 如果查询较长，保存成 UTF-8 `.sql` 文件再执行，仍然不要塞进一行 `node -e`：
+
+```powershell
+npm.cmd --silent run db:query -- --file .\query.sql --format table
+```
+
+- `db:query` 默认读取 `.env` 里的 `DATABASE_PATH`，否则使用 `./data/bot.sqlite`；脚本以只读方式打开数据库，并开启 SQLite `query_only`，用于排查时不应修改库内容。
 
 ## QQ Webhook 踩坑记录
 

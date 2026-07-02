@@ -3,6 +3,11 @@ dist/
 data/
 logs/
 coverage/
+outputs/
+
+# Project Codex skills are source assets and should remain committable.
+!skills/
+!skills/**
 
 .env
 .env.*
@@ -10,6 +15,8 @@ coverage/
 
 .codex-tmp/
 .codex-avatar-test.png
+__pycache__/
+*.pyc
 .DS_Store
 *.tsbuildinfo
 npm-debug.log*

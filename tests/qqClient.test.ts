@@ -44,6 +44,36 @@ describe("QQOpenApiClient", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
+
+  it("sends c2c wakeup text messages with the is_wakeup flag", async () => {
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "https://token.example/token") {
+        return jsonResponse({ access_token: "token", expires_in: 7200 });
+      }
+      if (url === "https://api.example/v2/users/private%201/messages") {
+        expect(JSON.parse(String(init?.body))).toEqual({
+          content: "secret",
+          msg_type: 0,
+          is_wakeup: true
+        });
+        return jsonResponse({});
+      }
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = new QQOpenApiClient({
+      appId: "app",
+      appSecret: "secret",
+      apiBaseUrl: "https://api.example",
+      tokenUrl: "https://token.example/token"
+    });
+
+    await client.sendTextMessage({ type: "c2c", userOpenid: "private 1" }, "secret", undefined, 1, { isWakeup: true });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });
 
 function jsonResponse(payload: unknown): Response {

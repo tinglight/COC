@@ -113,6 +113,10 @@ describe("ProactiveChatScheduler", () => {
     expect(secondPrompt).toContain("player asks about the locked door");
     expect(secondPrompt).toContain("first idle line");
     expect(secondPrompt).toContain("Proactive turn: 2");
+    expect(secondPrompt).toContain("Story structure for this turn");
+    expect(secondPrompt).toContain("Current beat: 平淡变形");
+    expect(secondPrompt).toContain("Cast and world growth rules");
+    expect(secondPrompt).toContain("Turn cast cadence");
   });
 
   it("retries when a proactive story repeats recent beats", async () => {
@@ -172,7 +176,64 @@ describe("ProactiveChatScheduler", () => {
       userId: "proactive-scheduler",
       actorName: "叙述者",
       outputText: "A telephone rings downstairs and stops before the second bell.",
-      metadata: expect.objectContaining({ proactiveTurn: 2 })
+      metadata: expect.objectContaining({
+        proactiveTurn: 2,
+        storyPattern: "slow_burn_reversal",
+        storyBeat: "quiet_distortion"
+      })
+    }));
+  });
+
+  it("rotates narrative structures after a full slow-burn cycle", async () => {
+    let now = 1_000;
+    const createReply = vi.fn(async () => "档案室实习生发现第十页被撕走，只剩订书针生锈的痕迹。");
+    const sendTextMessage = vi.fn(async () => undefined);
+    const addNarrativeEvent = vi.fn();
+    const addProactiveLine = vi.fn();
+    const scheduler = new ProactiveChatScheduler({
+      config: {
+        proactiveChatEnabled: true,
+        proactiveGroupOpenids: new Set(),
+        proactiveIdleWindowMs: 60_000,
+        proactiveCheckIntervalMs: 60_000,
+        proactiveMinGapMs: 60_000,
+        proactiveChance: 1,
+        proactivePrompt: "Continue a small world event.",
+        proactiveMarkdownEnabled: false,
+        proactiveMarkdownNarrators: [],
+        proactiveImageEnabled: false,
+        proactiveImagePrompt: "Draw the story."
+      },
+      aiClient: { createReply },
+      qqClient: { sendTextMessage },
+      storage: {
+        addNarrativeEvent,
+        addProactiveLine,
+        getProactiveLineCount: () => 9,
+        getRecentProactiveLines: () => ["上一轮反转让旧钥匙指向了错误的房间。"]
+      },
+      logger: silentLogger(),
+      now: () => now,
+      random: () => 0
+    });
+
+    scheduler.recordGroupActivity("group1");
+    now += 61_000;
+    await scheduler.tick();
+
+    const [request] = createReply.mock.calls[0] as unknown as [{ text: string }];
+    const prompt = request.text;
+    expect(prompt).toContain("Pattern: compact Freytag / three-act dramatic arc");
+    expect(prompt).toContain("Current beat: 开端陈列");
+    expect(prompt).toContain("Do not let the story orbit only two recurring people");
+    expect(addNarrativeEvent).toHaveBeenCalledWith(expect.objectContaining({
+      metadata: expect.objectContaining({
+        proactiveTurn: 10,
+        storyPattern: "freytag_compact",
+        storyBeat: "exposition",
+        storyBeatName: "开端陈列",
+        storyCycle: 2
+      })
     }));
   });
 

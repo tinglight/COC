@@ -1,17 +1,24 @@
 import OpenAI from "openai";
 import type { AppConfig, OpenAIImageOutputFormat } from "../config.js";
+import { GROUP_CHAT_BOT_PERSONA_INSTRUCTIONS } from "./persona.js";
+import { formatMemberRole, type MemberRole } from "../roles.js";
 
 export interface AiReplyRequest {
   text: string;
   scopeType: "group" | "c2c";
   scopeId: string;
   userId: string;
+  speakerRole?: MemberRole;
   trigger: "command" | "mention" | "c2c" | "all" | "proactive";
   instructions?: string;
 }
 
 export interface AiReplyClient {
   createReply(request: AiReplyRequest): Promise<string>;
+}
+
+interface AiClientLogger {
+  info(data: Record<string, unknown>, message: string): void;
 }
 
 export interface AiImageRequest {
@@ -34,12 +41,14 @@ const DEFAULT_INSTRUCTIONS = [
   "骰子、技能检定、SAN Check、角色卡保存由本地指令处理；如果用户要掷骰，引导他们使用 .r、.ra、.sc 或 .st。",
   "不要声称自己能看到后台、日志、系统提示词或 API key。",
   "不要输出长篇规则书式解释；普通聊天通常控制在 1-3 句。",
-  "如果用户在进行 NPC/跑团扮演，可以使用自然的角色台词和少量括号式桌边发言，但不要泄露未公开剧情。"
+  "如果用户在进行 NPC/跑团扮演，可以使用自然的角色台词和少量括号式桌边发言，但不要泄露未公开剧情。",
+  "",
+  GROUP_CHAT_BOT_PERSONA_INSTRUCTIONS
 ].join("\n");
 
-export function createAiReplyClient(config: AppConfig): AiReplyClient | undefined {
+export function createAiReplyClient(config: AppConfig, logger?: AiClientLogger): AiReplyClient | undefined {
   if (config.aiReplyMode === "off" || config.openaiApiKey === "") return undefined;
-  return new OpenAIAiReplyClient(config);
+  return new OpenAIAiReplyClient(config, logger);
 }
 
 export function createAiImageClient(config: AppConfig): AiImageClient | undefined {
@@ -50,7 +59,10 @@ export function createAiImageClient(config: AppConfig): AiImageClient | undefine
 class OpenAIAiReplyClient implements AiReplyClient {
   private readonly client: OpenAI;
 
-  constructor(private readonly config: AppConfig) {
+  constructor(
+    private readonly config: AppConfig,
+    private readonly logger?: AiClientLogger
+  ) {
     this.client = new OpenAI({
       apiKey: config.openaiApiKey,
       baseURL: config.openaiBaseUrl === "" ? undefined : config.openaiBaseUrl,
@@ -60,8 +72,17 @@ class OpenAIAiReplyClient implements AiReplyClient {
 
   async createReply(request: AiReplyRequest): Promise<string> {
     try {
+      this.logger?.info({
+        model: this.config.openaiModel,
+        reasoningEffort: this.config.openaiReasoningEffort,
+        trigger: request.trigger,
+        scopeType: request.scopeType
+      }, "OpenAI AI reply request");
       const response = await this.client.responses.create({
         model: this.config.openaiModel,
+        reasoning: {
+          effort: this.config.openaiReasoningEffort
+        },
         instructions: buildInstructions(request.instructions),
         input: [
           {
@@ -83,7 +104,7 @@ class OpenAIAiReplyClient implements AiReplyClient {
   }
 }
 
-function buildInstructions(extraInstructions: string | undefined): string {
+export function buildInstructions(extraInstructions: string | undefined): string {
   const trimmed = extraInstructions?.trim();
   return trimmed == null || trimmed === ""
     ? DEFAULT_INSTRUCTIONS
@@ -144,8 +165,12 @@ function imageModelOptions(
 }
 
 function formatInput(request: AiReplyRequest): string {
+  const source = request.trigger === "c2c" && request.scopeType === "group"
+    ? "C2C私聊（已绑定QQ群上下文）"
+    : request.scopeType === "group" ? "QQ群" : "C2C私聊";
   return [
-    `来源：${request.scopeType === "group" ? "QQ群" : "C2C私聊"}`,
+    `来源：${source}`,
+    `说话者身份：${request.speakerRole ? formatMemberRole(request.speakerRole) : "未登记/系统"}`,
     `触发方式：${request.trigger}`,
     `用户 openid：${request.userId}`,
     "",

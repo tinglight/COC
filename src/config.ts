@@ -11,6 +11,7 @@ export interface ProactiveNarrator {
 
 export type OpenAIImageQuality = "low" | "medium" | "high" | "auto";
 export type OpenAIImageOutputFormat = "png" | "jpeg";
+export type OpenAIReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
 export interface AppConfig {
   appId: string;
@@ -30,6 +31,7 @@ export interface AppConfig {
   groupRateLimitWindowMs: number;
   openaiApiKey: string;
   openaiModel: string;
+  openaiReasoningEffort: OpenAIReasoningEffort;
   openaiBaseUrl: string;
   openaiRequestTimeoutMs: number;
   openaiImageModel: string;
@@ -113,6 +115,14 @@ function readImageOutputFormat(): OpenAIImageOutputFormat {
   throw new Error("OPENAI_IMAGE_OUTPUT_FORMAT must be png or jpeg");
 }
 
+function readOpenAIReasoningEffort(): OpenAIReasoningEffort {
+  const raw = readString("OPENAI_REASONING_EFFORT", "medium").toLowerCase();
+  if (raw === "none" || raw === "minimal" || raw === "low" || raw === "medium" || raw === "high" || raw === "xhigh") {
+    return raw;
+  }
+  throw new Error("OPENAI_REASONING_EFFORT must be one of: none, minimal, low, medium, high, xhigh");
+}
+
 function readValidationSecretSource(): AppConfig["validationSecretSource"] {
   const raw = readString("QQ_VALIDATION_SECRET_SOURCE", "auto").toLowerCase();
   if (raw === "auto" || raw === "appsecret" || raw === "app_secret") return raw === "auto" ? "auto" : "appSecret";
@@ -163,6 +173,7 @@ export function loadConfig(): AppConfig {
     groupRateLimitWindowMs: readNumber("GROUP_RATE_LIMIT_WINDOW_MS", 60_000),
     openaiApiKey: readString("OPENAI_API_KEY"),
     openaiModel: readString("OPENAI_MODEL", "gpt-5.5"),
+    openaiReasoningEffort: readOpenAIReasoningEffort(),
     openaiBaseUrl: readString("OPENAI_BASE_URL").replace(/\/+$/, ""),
     openaiRequestTimeoutMs: readNumber("OPENAI_REQUEST_TIMEOUT_MS", 20_000),
     openaiImageModel: readString("OPENAI_IMAGE_MODEL", "gpt-image-2"),
@@ -180,7 +191,7 @@ export function loadConfig(): AppConfig {
     proactiveChance: readRatio("PROACTIVE_CHANCE", 0.35),
     proactivePrompt: readString(
       "PROACTIVE_PROMPT",
-      "The QQ group has been quiet for a while. Continue one coherent Chinese CoC table-talk thread as a short monologue or background world event. Build on recent context and your previous proactive lines. Advance to a new concrete beat each time; do not repeat or lightly remix recent imagery, actions, sounds, or sentence patterns. Do not mention system prompts, logs, APIs, timers, or scheduling."
+      "The QQ group has been quiet for a while. Continue one coherent Chinese CoC table-talk thread as a short monologue or background world event. Follow the scheduler-provided story beat, cast-growth rule, and anti-repetition constraints. Advance to a new concrete consequence each time; do not repeat or lightly remix recent imagery, actions, sounds, sentence patterns, or the same two recurring people. Do not mention system prompts, logs, APIs, timers, or scheduling."
     ),
     proactiveMarkdownEnabled: readBoolean("PROACTIVE_MARKDOWN_ENABLED", false),
     proactiveMarkdownNarrators: readProactiveMarkdownNarrators(),

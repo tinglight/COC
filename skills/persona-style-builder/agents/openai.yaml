@@ -1,0 +1,4 @@
+interface:
+  display_name: "Persona Style Builder"
+  short_description: "Turn notes or chat logs into playable NPC or bot voice cards."
+  default_prompt: "Use $persona-style-builder to turn these notes or chat logs into a reusable NPC voice profile."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Proactive Story Flavor"
+  short_description: "Inject module-era flavor into proactive side stories"
+  default_prompt: "Use $proactive-story-flavor to draft module-safe flavor stories for proactive QQ CoC broadcasts."

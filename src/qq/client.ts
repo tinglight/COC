@@ -10,27 +10,31 @@ interface UploadMediaResponse {
   file_info?: string;
 }
 
+export interface SendMessageOptions {
+  isWakeup?: boolean;
+}
+
 export class QQOpenApiClient {
   private accessToken?: AccessTokenState;
 
   constructor(private readonly config: Pick<AppConfig, "appId" | "appSecret" | "apiBaseUrl" | "tokenUrl">) {}
 
-  async sendTextMessage(target: MessageTarget, content: string, msgId?: string, msgSeq = 1): Promise<void> {
-    await this.sendMessage(target, { type: "text", content }, msgId, msgSeq);
+  async sendTextMessage(target: MessageTarget, content: string, msgId?: string, msgSeq = 1, options: SendMessageOptions = {}): Promise<void> {
+    await this.sendMessage(target, { type: "text", content }, msgId, msgSeq, options);
   }
 
-  async sendMarkdownMessage(target: MessageTarget, content: string, msgId?: string, msgSeq = 1): Promise<void> {
-    await this.sendMessage(target, { type: "markdown", content }, msgId, msgSeq);
+  async sendMarkdownMessage(target: MessageTarget, content: string, msgId?: string, msgSeq = 1, options: SendMessageOptions = {}): Promise<void> {
+    await this.sendMessage(target, { type: "markdown", content }, msgId, msgSeq, options);
   }
 
-  async sendImageMessage(target: MessageTarget, image: QQImageSource | string, msgId?: string, msgSeq = 1): Promise<void> {
+  async sendImageMessage(target: MessageTarget, image: QQImageSource | string, msgId?: string, msgSeq = 1, options: SendMessageOptions = {}): Promise<void> {
     const source = typeof image === "string" ? { url: image } : image;
     const fileInfo = await this.uploadImage(target, source);
-    await this.sendMessage(target, { type: "media", fileInfo }, msgId, msgSeq);
+    await this.sendMessage(target, { type: "media", fileInfo }, msgId, msgSeq, options);
   }
 
-  async sendMessage(target: MessageTarget, message: OutgoingQQMessage, msgId?: string, msgSeq = 1): Promise<void> {
-    const body = buildMessageBody(message, msgId, msgSeq);
+  async sendMessage(target: MessageTarget, message: OutgoingQQMessage, msgId?: string, msgSeq = 1, options: SendMessageOptions = {}): Promise<void> {
+    const body = buildMessageBody(message, msgId, msgSeq, options);
 
     if (target.type === "group") {
       await this.post(`/v2/groups/${encodeURIComponent(target.groupOpenid)}/messages`, body);
@@ -105,8 +109,11 @@ export class QQOpenApiClient {
   }
 }
 
-function buildMessageBody(message: OutgoingQQMessage, msgId: string | undefined, msgSeq: number): Record<string, unknown> {
-  const base = msgId == null ? {} : { msg_id: msgId, msg_seq: msgSeq };
+function buildMessageBody(message: OutgoingQQMessage, msgId: string | undefined, msgSeq: number, options: SendMessageOptions): Record<string, unknown> {
+  const base = {
+    ...(msgId == null ? {} : { msg_id: msgId, msg_seq: msgSeq }),
+    ...(options.isWakeup ? { is_wakeup: true } : {})
+  };
   if (message.type === "text") {
     return {
       content: message.content,

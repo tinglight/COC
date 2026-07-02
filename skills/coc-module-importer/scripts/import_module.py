@@ -361,18 +361,27 @@ def write_campaign_templates(out_dir: Path, module_id: str, source_sha: str, dig
         "canon_digest": digest,
         "canon_policy": {
             "canon_locked": True,
-            "mutable_layers": ["campaign/keeper_overrides.md", "campaign/session_state.json", "campaign/live_log.md"],
+            "mutable_layers": [
+                "campaign/keeper_overrides.md",
+                "campaign/session_state.json",
+                "campaign/live_log.md",
+                "campaign/pc_cards/",
+                "campaign/pc_branch_matrix.md",
+                "campaign/pc_prep_matrix.md",
+            ],
             "rule": "Do not edit canon to represent table play. Add KP changes and consequences to campaign state.",
         },
         "pcs": {},
         "npcs": {},
         "relationships": {},
         "pc_impacts": [],
+        "pc_prep": [],
         "world_changes": [],
         "scene_log": [],
         "open_threads": [],
     }
     write_json(campaign_dir / "session_state.json", state)
+    (campaign_dir / "pc_cards").mkdir(parents=True, exist_ok=True)
 
     (campaign_dir / "live_log.md").write_text(
         f"# Live Log - {module_id}\n\n"
@@ -402,6 +411,14 @@ def write_campaign_templates(out_dir: Path, module_id: str, source_sha: str, dig
         trigger = "<br>".join(hook["trigger_text"])[:700]
         rows.append(f"| {hook['id']} | {hook.get('hook_type', 'pc_hook')} | {hook['section_title']} | {trigger} |  |  | pending |")
     (campaign_dir / "pc_branch_matrix.md").write_text("\n".join(rows) + "\n", encoding="utf-8")
+
+    prep_rows = [
+        "# PC Prep Matrix",
+        "",
+        "| PC | Card Signal | Canon Hook / Source Ref | Personal Beat | NPC / Scene Carrier | Rule Or Clue Constraint | Safety / Consent Note | Status |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    (campaign_dir / "pc_prep_matrix.md").write_text("\n".join(prep_rows) + "\n", encoding="utf-8")
 
 
 def import_module(input_path: Path, out_dir: Path, module_id: str, overwrite: bool = False) -> dict[str, Any]:
@@ -497,9 +514,11 @@ def import_module(input_path: Path, out_dir: Path, module_id: str, overwrite: bo
         "## Next Steps",
         "",
         "1. Review `canon/module_index.json`.",
-        "2. Fill PC-specific choices in `campaign/pc_branch_matrix.md`.",
-        "3. Record play in `campaign/session_state.json` and `campaign/live_log.md`.",
-        "4. Run `check_canon_lock.py` before session summaries.",
+        "2. Store participating character sheets in `campaign/pc_cards/`.",
+        "3. Fill PC-specific prep in `campaign/pc_prep_matrix.md`.",
+        "4. Fill canon branch choices in `campaign/pc_branch_matrix.md`.",
+        "5. Record play in `campaign/session_state.json` and `campaign/live_log.md`.",
+        "6. Run `check_canon_lock.py` before session summaries.",
         "",
     ]
     (out_dir / "import_summary.md").write_text("\n".join(summary), encoding="utf-8")

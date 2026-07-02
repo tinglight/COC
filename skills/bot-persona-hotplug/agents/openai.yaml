@@ -1,0 +1,4 @@
+interface:
+  display_name: "Bot Persona Hotplug"
+  short_description: "Apply or remove QQ bot persona cards."
+  default_prompt: "Use $bot-persona-hotplug to apply or remove the QQ bot group chat persona card."
