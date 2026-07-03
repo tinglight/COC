@@ -1,0 +1,4 @@
+interface:
+  display_name: "Chat Meme Reaction"
+  short_description: "Generate contextual QQ reaction memes"
+  default_prompt: "Use $chat-meme-reaction to decide whether a QQ CoC group moment deserves a compact captioned reaction meme and draft the image prompt."

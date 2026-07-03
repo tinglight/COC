@@ -27,6 +27,103 @@ describe("handleCommand", () => {
     storage.close();
   });
 
+  it("writes stored san check loss back to the character sheet and session log", async () => {
+    const storage = new BotStorage(":memory:");
+    const context = { scopeType: "group" as const, scopeId: "g1", userId: "u1" };
+    const values = [0.8, 0.5];
+    storage.setSkills("group", "g1", "u1", [{ key: "san", name: "SAN", value: 60 }]);
+
+    const result = await handleCommand(".sc 0/1d6", context, { storage, rng: () => values.shift() ?? 0 });
+
+    expect(result).toContain("剩余 56（已写回角色卡）");
+    expect(storage.getSkill("group", "g1", "u1", "san")?.value).toBe(56);
+    expect(storage.getRecentNarrativeEvents({
+      scopeType: "group",
+      scopeId: "g1",
+      kind: "character_update",
+      limit: 5
+    })).toEqual([
+      expect.objectContaining({
+        actorName: "SAN",
+        outputText: expect.stringContaining("SAN 60 -> 56（-4）"),
+        metadata: expect.objectContaining({
+          command: "sc",
+          attributeKey: "san",
+          oldValue: 60,
+          newValue: 56,
+          delta: -4,
+          visibility: "public"
+        })
+      })
+    ]);
+    storage.close();
+  });
+
+  it("adjusts hp and records character changes in the session log", async () => {
+    const storage = new BotStorage(":memory:");
+    const context = { scopeType: "group" as const, scopeId: "g1", userId: "u1" };
+    storage.setSkills("group", "g1", "u1", [{ key: "hp", name: "HP", value: 12 }]);
+
+    await expect(handleCommand(".hp -3 被咬伤", context, { storage }))
+      .resolves.toContain("HP 12 -> 9（-3）");
+    await expect(handleCommand(".show", context, { storage })).resolves.toContain("HP9");
+
+    const log = await handleCommand(".log show", context, { storage });
+    expect(log).toContain("[属性变化]");
+    expect(log).toContain("被咬伤");
+    storage.close();
+  });
+
+  it("records manual character sheet updates as character changes", async () => {
+    const storage = new BotStorage(":memory:");
+    const context = { scopeType: "group" as const, scopeId: "g1", userId: "u1" };
+
+    await handleCommand(".st hp12 san60", context, { storage });
+    await expect(handleCommand(".st hp9 san56", context, { storage })).resolves.toContain("已保存");
+
+    const log = await handleCommand(".log show", context, { storage });
+    expect(log).toContain("HP 12 -> 9（-3）");
+    expect(log).toContain("SAN 60 -> 56（-4）");
+    storage.close();
+  });
+
+  it("records major events and module progress", async () => {
+    const storage = new BotStorage(":memory:");
+    const context = { scopeType: "group" as const, scopeId: "g1", userId: "kp1" };
+
+    await expect(handleCommand(".log 事件 调查员打开钟楼门", context, { storage }))
+      .resolves.toBe("已记录重大事件：调查员打开钟楼门");
+    await expect(handleCommand(".log 进度 第一幕结束，进入旧宅", context, { storage }))
+      .resolves.toBe("已记录模组进度：第一幕结束，进入旧宅");
+
+    const log = await handleCommand(".log show 5", context, { storage });
+    expect(log).toContain("[重大事件] 调查员打开钟楼门");
+    expect(log).toContain("[模组进度] 第一幕结束，进入旧宅");
+    storage.close();
+  });
+
+  it("keeps public help limited to basic commands", async () => {
+    const storage = new BotStorage(":memory:");
+    const context = { scopeType: "group" as const, scopeId: "g1", userId: "u1" };
+
+    const help = await handleCommand(".help", context, { storage });
+
+    expect(help).toContain(".r 1d100");
+    expect(help).toContain(".ra 侦查");
+    expect(help).toContain(".sc 0/1d6");
+    expect(help).toContain(".ai 你好");
+    expect(help).toContain(".st 侦查60");
+    expect(help).toContain(".hp -3");
+    expect(help).toContain(".log 事件");
+    expect(help).toContain(".show");
+    expect(help).not.toMatch(/\.(?:npc|secret|npcdm|pm|inbox|train|mem)\b/);
+    expect(help).not.toContain(".播报");
+    expect(help).not.toContain(".记住");
+    expect(help).not.toContain("秘密");
+    expect(help).not.toContain("训练");
+    storage.close();
+  });
+
   it("runs ai command when an AI client is provided", async () => {
     const storage = new BotStorage(":memory:");
     const context = { scopeType: "group" as const, scopeId: "g1", userId: "u1" };
@@ -43,6 +140,15 @@ describe("handleCommand", () => {
       kind: "ai_reply",
       limit: 5
     })).toHaveLength(1);
+    storage.close();
+  });
+
+  it("turns async ai command failures into command error replies", async () => {
+    const storage = new BotStorage(":memory:");
+    const context = { scopeType: "group" as const, scopeId: "g1", userId: "u1" };
+    const aiClient = { createReply: vi.fn(async () => { throw new Error("AI backend down"); }) };
+
+    await expect(handleCommand(".ai hello", context, { storage, aiClient })).resolves.toContain("AI backend down");
     storage.close();
   });
 
@@ -82,6 +188,21 @@ describe("handleCommand", () => {
     expect(request.instructions).toContain("另一名调查员");
     expect(request.instructions).toContain("最近同一跑团上下文");
     expect(request.instructions).toContain("第七节车厢");
+    storage.close();
+  });
+
+  it("adds local character sheet build skill to ai character creation prompts", async () => {
+    const storage = new BotStorage(":memory:");
+    const context = { scopeType: "group" as const, scopeId: "g1", userId: "u1" };
+    const aiClient = { createReply: vi.fn(async (_request: AiReplyRequest) => "先从第 0 步开始。") };
+
+    await expect(handleCommand(".ai 带我车一张调查员角色卡", context, { storage, aiClient }))
+      .resolves.toBe("先从第 0 步开始。");
+
+    const [request] = aiClient.createReply.mock.calls[0] as unknown as [AiReplyRequest];
+    expect(request.instructions).toContain("build-coc-character-sheet");
+    expect(request.instructions).toContain("逐步流程");
+    expect(request.instructions).toContain(".st");
     storage.close();
   });
 
@@ -171,12 +292,72 @@ describe("handleCommand", () => {
     storage.close();
   });
 
+  it("enables proactive module flavor with a keeper command", async () => {
+    const storage = new BotStorage(":memory:");
+    const context = { scopeType: "group" as const, scopeId: "g1", userId: "kp1" };
+    const moduleImportsRoot = createModuleImportRoot();
+    storage.setMemberRole("group", "g1", "kp1", "kp", "kp1");
+
+    const result = await handleCommand(".播报 模组 W列车 风味：多写车站小报、票根和普通乘客的名誉压力。", context, {
+      storage,
+      moduleImportsRoot
+    });
+
+    expect(result).toContain("已开启本群主动播报");
+    expect(result).toContain("Warp列车");
+    expect(result).toContain("campaign/proactive_flavor.md");
+    expect(storage.getProactiveGroupSettings("g1")).toMatchObject({
+      enabled: true,
+      moduleId: "w-train-v2-demo",
+      moduleName: "Warp列车",
+      updatedByUserId: "kp1"
+    });
+    expect(storage.getProactiveGroupSettings("g1")?.flavorText).toContain("车站小报");
+    expect(storage.getProactiveGroupSettings("g1")?.flavorText).toContain("KP补充风味");
+
+    await expect(handleCommand(".播报 off", context, { storage }))
+      .resolves.toContain("已关闭");
+    expect(storage.getProactiveGroupSettings("g1")?.enabled).toBe(false);
+    storage.close();
+  });
+
+  it("blocks PL from changing proactive broadcast flavor", async () => {
+    const storage = new BotStorage(":memory:");
+    const context = { scopeType: "group" as const, scopeId: "g1", userId: "pl1" };
+    storage.setMemberRole("group", "g1", "pl1", "pl", "pl1");
+
+    await expect(handleCommand(".播报 模组 W列车", context, { storage }))
+      .resolves.toContain("只有 KP");
+    expect(storage.getProactiveGroupSettings("g1")).toBeUndefined();
+    storage.close();
+  });
+
   it("runs npc command with local roleplay skill instructions", async () => {
     const storage = new BotStorage(":memory:");
     const context = { scopeType: "group" as const, scopeId: "g1", userId: "u1" };
     const aiClient = { createReply: vi.fn(async () => "张管家低声回答。") };
     const npcSkillRoot = createNpcSkillRoot("训练教训：括号不要解释写作策略。");
     storage.setMemberRole("group", "g1", "u1", "kp", "u1");
+    storage.savePersonaCard({
+      name: "张管家",
+      speechStyle: "说话克制，像旧宅里真的管家。",
+      privateNotes: "KP-only：真正的钥匙在二楼。",
+      patiencePolicy: "玩家重复追问三次后，他会停止配合。"
+    });
+    storage.saveTrainingExample({
+      npcName: "张管家",
+      issueType: "太像 AI",
+      correction: "不要解释扮演策略。",
+      goodReply: "张管家把手套慢慢拉平：您已经问过一次了。"
+    });
+    storage.saveMemoryAnchor({
+      npcName: "张管家",
+      anchorType: "object",
+      label: "钟楼钥匙",
+      content: "玩家已经公开见过张管家腰间的旧钥匙串。",
+      visibility: "player",
+      status: "confirmed"
+    });
     storage.addNarrativeEvent({
       kind: "npc_reply",
       scopeType: "group",
@@ -201,6 +382,10 @@ describe("handleCommand", () => {
     }));
     const [npcRequest] = aiClient.createReply.mock.calls[0] as unknown as [{ text: string }];
     expect(npcRequest.text).toContain("张管家说他只听见钟声。");
+    expect(npcRequest.text).toContain("说话克制，像旧宅里真的管家。");
+    expect(npcRequest.text).toContain("张管家把手套慢慢拉平");
+    expect(npcRequest.text).toContain("钟楼钥匙");
+    expect(npcRequest.text).not.toContain("真正的钥匙在二楼");
     const npcEvents = storage.getRecentNarrativeEvents({
       scopeType: "group",
       scopeId: "g1",
@@ -213,6 +398,92 @@ describe("handleCommand", () => {
       outputText: "张管家低声回答。",
       metadata: { command: "npc" }
     });
+    storage.close();
+  });
+
+  it("previews ai context without calling the model", async () => {
+    const storage = new BotStorage(":memory:");
+    const context = { scopeType: "group" as const, scopeId: "g1", userId: "u1" };
+    const aiClient = { createReply: vi.fn(async (_request: AiReplyRequest) => "should not be called") };
+    storage.setMemberRole("group", "g1", "u1", "kp", "u1");
+    storage.addTableMessage("g1", "u2", "第七节车厢广播突然变成了倒放。");
+    storage.addPlayerMemory({
+      scopeType: "group",
+      scopeId: "g1",
+      userId: "u1",
+      category: "角色设定",
+      memoryText: "调查员是急诊医生。",
+      sourceKind: "test"
+    });
+
+    const result = await handleCommand(".aictx 帮我判断现在该提示什么", context, { storage, aiClient });
+
+    expect(aiClient.createReply).not.toHaveBeenCalled();
+    expect(result).toContain("AI 上下文预览");
+    expect(result).toContain("长期桌边记忆");
+    expect(result).toContain("急诊医生");
+    expect(result).toContain("第七节车厢");
+    expect(result).toContain("模型输入消息");
+    storage.close();
+  });
+
+  it("generates npc drafts without recording narrative history", async () => {
+    const storage = new BotStorage(":memory:");
+    const context = { scopeType: "group" as const, scopeId: "g1", userId: "u1" };
+    const aiClient = { createReply: vi.fn(async () => "1. 候选一\n2. 候选二\n3. 候选三") };
+    const npcSkillRoot = createNpcSkillRoot("候选也要短。");
+    storage.setMemberRole("group", "g1", "u1", "kp", "u1");
+
+    await expect(handleCommand(".npcdraft 张管家 玩家问：你为什么不看钟楼？", context, {
+      storage,
+      aiClient,
+      npcSkillRoot
+    })).resolves.toContain("候选一");
+
+    expect(aiClient.createReply).toHaveBeenCalledWith(expect.objectContaining({
+      text: expect.stringContaining("3 个可直接复制到 QQ 的 NPC 回复候选"),
+      instructions: expect.stringContaining("NPC 候选回复模式")
+    }));
+    expect(storage.getRecentNarrativeEvents({
+      scopeType: "group",
+      scopeId: "g1",
+      kind: "npc_reply",
+      limit: 5
+    })).toHaveLength(0);
+    storage.close();
+  });
+
+  it("saves a keeper-edited npc reply into narrative history", async () => {
+    const storage = new BotStorage(":memory:");
+    const context = { scopeType: "group" as const, scopeId: "g1", userId: "u1" };
+    const npcSkillRoot = createNpcSkillRoot("修正版要被后续参考。");
+    storage.setMemberRole("group", "g1", "u1", "kp", "u1");
+
+    await expect(handleCommand(".npcsave 张管家 玩家问：昨晚你在哪里？ || 张管家垂下眼：我在钟楼门外。", context, {
+      storage
+    })).resolves.toContain("已记录 张管家");
+
+    const events = storage.getRecentNarrativeEvents({
+      scopeType: "group",
+      scopeId: "g1",
+      kind: "npc_reply",
+      limit: 5
+    });
+    expect(events).toEqual([
+      expect.objectContaining({
+        actorName: "张管家",
+        inputText: "玩家问：昨晚你在哪里？",
+        outputText: "张管家垂下眼：我在钟楼门外。",
+        metadata: { command: "npcsave", manuallyEdited: true }
+      })
+    ]);
+
+    const preview = await handleCommand(".npctx 张管家 玩家问：你还记得钟楼吗？", context, {
+      storage,
+      npcSkillRoot
+    });
+    expect(preview).toContain("NPC 上下文预览");
+    expect(preview).toContain("张管家垂下眼");
     storage.close();
   });
 
@@ -491,5 +762,12 @@ function createModuleImportRoot(): string {
     relationships: {},
     world_changes: []
   }), "utf8");
+  fs.writeFileSync(path.join(moduleRoot, "campaign", "proactive_flavor.md"), [
+    "# W列车主动播报风味",
+    "",
+    "- 公开时代/地点：一列被乘客视为日常交通工具的异常列车。",
+    "- 社会情景：车站小报、旧票根、乘客名誉、乘务员交接。",
+    "- 禁止：不要透露核心谜底、关键线索链或幕后机制。"
+  ].join("\n"), "utf8");
   return root;
 }

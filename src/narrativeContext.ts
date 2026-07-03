@@ -1,6 +1,11 @@
 import { buildLocalModuleKnowledgeInstructions } from "./moduleKnowledge.js";
 import type { BotStorage, StoredNarrativeEvent, StoredPlayerMemory } from "./storage.js";
 import { DEFAULT_MEMBER_ROLE, formatMemberRole, type MemberRole } from "./roles.js";
+import {
+  buildCharacterSheetBuildInstructions,
+  loadCharacterSheetBuildSkill,
+  shouldUseCharacterSheetBuildSkill
+} from "./characterCreationSkill.js";
 
 export interface NarrativeContext {
   scopeType: "group" | "c2c";
@@ -14,6 +19,7 @@ export interface AiContextInstructionInput {
   context: NarrativeContext;
   speakerRole?: MemberRole;
   moduleImportsRoot?: string;
+  characterSheetBuildSkillRoot?: string;
 }
 
 const RECENT_CONTEXT_LIMIT = 12;
@@ -35,11 +41,21 @@ export function buildAiContextInstructions(input: AiContextInstructionInput): st
   const parts = [
     buildRoleBoundaryInstructions(speakerRole),
     speakerRole === "kp" ? buildLocalModuleKnowledgeInstructions(input.userText, input.moduleImportsRoot) : undefined,
+    buildCharacterSheetBuildSkillContext(input.userText, input.characterSheetBuildSkillRoot),
     buildPlayerMemoryInstructions(input.storage, input.context, speakerRole),
     buildRecentNarrativeContextInstructions(input.storage, input.context, speakerRole)
   ].filter((part): part is string => part != null && part.trim() !== "");
 
   return parts.length === 0 ? undefined : parts.join("\n\n");
+}
+
+function buildCharacterSheetBuildSkillContext(userText: string, skillRoot?: string): string | undefined {
+  if (!shouldUseCharacterSheetBuildSkill(userText)) return undefined;
+  try {
+    return buildCharacterSheetBuildInstructions(loadCharacterSheetBuildSkill(skillRoot));
+  } catch {
+    return undefined;
+  }
 }
 
 function buildRoleBoundaryInstructions(role: MemberRole): string {
@@ -174,6 +190,7 @@ function filterNarrativeEventsForRole(
   if (speakerRole === "kp") return events;
   return events.filter((event) => {
     if (event.kind === "proactive_story") return true;
+    if (isPublicSessionRecord(event)) return true;
     if (context.userId && event.userId === context.userId) return true;
     return false;
   });
@@ -199,9 +216,23 @@ function formatNarrativeEvent(event: StoredNarrativeEvent, index: number): strin
         : `${prefix} ${actor ?? "NPC"}：${clip(output)}`;
     case "proactive_story":
       return `${prefix} ${actor ?? "叙述者"}主动故事：${clip(output)}`;
+    case "character_update":
+      return `${prefix} ${speaker}角色卡变化：${clip(output)}`;
+    case "session_event":
+      return `${prefix} ${speaker}${metadataString(event, "category") ?? "跑团记录"}：${clip(output)}`;
     default:
       return `${prefix} ${event.kind}：${clip(output)}`;
   }
+}
+
+function isPublicSessionRecord(event: StoredNarrativeEvent): boolean {
+  if (!["character_update", "session_event"].includes(event.kind)) return false;
+  return metadataString(event, "visibility") === "public";
+}
+
+function metadataString(event: StoredNarrativeEvent, key: string): string | undefined {
+  const value = event.metadata[key];
+  return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
 }
 
 function formatMemorySection(title: string, memories: StoredPlayerMemory[], includeSpeaker: boolean): string[] {

@@ -147,6 +147,8 @@ describe("ProactiveChatScheduler", () => {
       storage: {
         addNarrativeEvent,
         addProactiveLine,
+        getEnabledProactiveGroups: () => ["group1"],
+        getProactiveGroupSettings: () => ({ groupOpenid: "group1", enabled: true, updatedAt: "now" }),
         getProactiveLineCount: () => 1,
         getRecentProactiveLines: () => ["Something softly knocked three times above the door."]
       },
@@ -209,6 +211,8 @@ describe("ProactiveChatScheduler", () => {
       storage: {
         addNarrativeEvent,
         addProactiveLine,
+        getEnabledProactiveGroups: () => ["group1"],
+        getProactiveGroupSettings: () => ({ groupOpenid: "group1", enabled: true, updatedAt: "now" }),
         getProactiveLineCount: () => 9,
         getRecentProactiveLines: () => ["上一轮反转让旧钥匙指向了错误的房间。"]
       },
@@ -233,6 +237,154 @@ describe("ProactiveChatScheduler", () => {
         storyBeat: "exposition",
         storyBeatName: "开端陈列",
         storyCycle: 2
+      })
+    }));
+  });
+
+  it("does not send when storage has not enabled proactive broadcasts for the group", async () => {
+    let now = 1_000;
+    const createReply = vi.fn(async () => "idle hello");
+    const sendTextMessage = vi.fn(async () => undefined);
+    const scheduler = new ProactiveChatScheduler({
+      config: {
+        proactiveChatEnabled: true,
+        proactiveGroupOpenids: new Set(),
+        proactiveIdleWindowMs: 60_000,
+        proactiveCheckIntervalMs: 60_000,
+        proactiveMinGapMs: 60_000,
+        proactiveChance: 1,
+        proactivePrompt: "Say something short.",
+        proactiveMarkdownEnabled: false,
+        proactiveMarkdownNarrators: [],
+        proactiveImageEnabled: false,
+        proactiveImagePrompt: "Draw the story."
+      },
+      aiClient: { createReply },
+      qqClient: { sendTextMessage },
+      storage: {
+        addNarrativeEvent: vi.fn(),
+        addProactiveLine: vi.fn(),
+        getEnabledProactiveGroups: () => [],
+        getProactiveGroupSettings: () => undefined,
+        getProactiveLineCount: () => 0,
+        getRecentProactiveLines: () => []
+      },
+      logger: silentLogger(),
+      now: () => now,
+      random: () => 0
+    });
+
+    scheduler.recordGroupActivity("group1");
+    now += 61_000;
+    await scheduler.tick();
+
+    expect(createReply).not.toHaveBeenCalled();
+    expect(sendTextMessage).not.toHaveBeenCalled();
+  });
+
+  it("discovers enabled proactive groups from storage without a fresh group message", async () => {
+    let now = 1_000;
+    const createReply = vi.fn(async () => "stored group hello");
+    const sendTextMessage = vi.fn(async () => undefined);
+    const scheduler = new ProactiveChatScheduler({
+      config: {
+        proactiveChatEnabled: true,
+        proactiveGroupOpenids: new Set(),
+        proactiveIdleWindowMs: 60_000,
+        proactiveCheckIntervalMs: 60_000,
+        proactiveMinGapMs: 60_000,
+        proactiveChance: 1,
+        proactivePrompt: "Say something short.",
+        proactiveMarkdownEnabled: false,
+        proactiveMarkdownNarrators: [],
+        proactiveImageEnabled: false,
+        proactiveImagePrompt: "Draw the story."
+      },
+      aiClient: { createReply },
+      qqClient: { sendTextMessage },
+      storage: {
+        addNarrativeEvent: vi.fn(),
+        addProactiveLine: vi.fn(),
+        getEnabledProactiveGroups: () => ["group-from-command"],
+        getProactiveGroupSettings: (groupOpenid: string) => ({
+          groupOpenid,
+          enabled: groupOpenid === "group-from-command",
+          updatedAt: "now"
+        }),
+        getProactiveLineCount: () => 0,
+        getRecentProactiveLines: () => []
+      },
+      logger: silentLogger(),
+      now: () => now,
+      random: () => 0
+    });
+
+    now += 61_000;
+    await scheduler.tick();
+    expect(sendTextMessage).not.toHaveBeenCalled();
+    now += 61_000;
+    await scheduler.tick();
+
+    expect(sendTextMessage).toHaveBeenCalledWith(
+      { type: "group", groupOpenid: "group-from-command" },
+      "stored group hello"
+    );
+  });
+
+  it("injects active module flavor into proactive story prompts", async () => {
+    let now = 1_000;
+    const createReply = vi.fn(async () => "车站报童把晚报最下面一行剪掉，才敢沿着月台叫卖。");
+    const sendTextMessage = vi.fn(async () => undefined);
+    const addNarrativeEvent = vi.fn();
+    const scheduler = new ProactiveChatScheduler({
+      config: {
+        proactiveChatEnabled: true,
+        proactiveGroupOpenids: new Set(),
+        proactiveIdleWindowMs: 60_000,
+        proactiveCheckIntervalMs: 60_000,
+        proactiveMinGapMs: 60_000,
+        proactiveChance: 1,
+        proactivePrompt: "Continue a small world event.",
+        proactiveMarkdownEnabled: false,
+        proactiveMarkdownNarrators: [],
+        proactiveImageEnabled: false,
+        proactiveImagePrompt: "Draw the story."
+      },
+      aiClient: { createReply },
+      qqClient: { sendTextMessage },
+      storage: {
+        addNarrativeEvent,
+        addProactiveLine: vi.fn(),
+        getEnabledProactiveGroups: () => ["group1"],
+        getProactiveGroupSettings: () => ({
+          groupOpenid: "group1",
+          enabled: true,
+          moduleId: "w-train",
+          moduleName: "W列车",
+          flavorText: "公开风味：车站、报馆、票根和旅行者的家族名誉压力。",
+          updatedAt: "now"
+        }),
+        getProactiveLineCount: () => 0,
+        getRecentProactiveLines: () => []
+      },
+      logger: silentLogger(),
+      now: () => now,
+      random: () => 0
+    });
+
+    scheduler.recordGroupActivity("group1");
+    now += 61_000;
+    await scheduler.tick();
+
+    const [request] = createReply.mock.calls[0] as unknown as [{ text: string }];
+    expect(request.text).toContain("Active module flavor packet");
+    expect(request.text).toContain("W列车");
+    expect(request.text).toContain("车站、报馆、票根");
+    expect(request.text).toContain("would solve or alter the main plot");
+    expect(addNarrativeEvent).toHaveBeenCalledWith(expect.objectContaining({
+      metadata: expect.objectContaining({
+        proactiveFlavorModuleId: "w-train",
+        proactiveFlavorModuleName: "W列车"
       })
     }));
   });

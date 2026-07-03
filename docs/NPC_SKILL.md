@@ -1,25 +1,25 @@
-# NPC Skill 与人格规则
+# NPC 扮演规则与人格规则
 
 这份文档定义 QQ CoC 跑团 AI 助手中的 NPC 生成与扮演规则。项目已经不是单纯的 QQ 骰娘，而是把 QQ 入口、本地骰子与角色卡、模组导入、NPC 塑造、KP 辅助和叙事记忆整合在一起的 COC/TRPG 跑团工具。
 
-NPC Skill 的目标不是让模型自由聊天，而是让它在已导入模组资料、NPC 角色卡、当前场景、跑团状态和 KP 控制边界内，稳定地产生可用于桌边的 NPC 回复。
+NPC 扮演规则的目标不是让模型自由聊天，而是让它在已导入模组资料、NPC 角色卡、当前场景、跑团状态和 KP 控制边界内，稳定地产生可用于桌边的 NPC 回复。
 
 ## 在项目中的位置
 
-NPC Skill 位于 AI 跑团层，和其它核心能力的关系如下：
+NPC 扮演规则位于 AI 跑团层，和其它核心能力的关系如下：
 
 - QQ Webhook 负责把群聊/C2C 消息带入项目，`.npc`、`.ai`、@机器人和主动故事是主要 AI 入口。
-- 本地骰子与角色卡系统负责规则结果，NPC Skill 只能建议何时需要检定，不能伪造骰点。
-- `skills/coc-module-importer` 负责把模组拆成只读 canon 与可变 campaign；NPC Skill 使用这些资料时必须遵守来源边界。
+- 本地骰子与角色卡系统负责规则结果，NPC 扮演规则只能建议何时需要检定，不能伪造骰点。
+- `skills/coc-module-importer` 负责把模组拆成只读 canon 与可变 campaign；NPC 扮演规则使用这些资料时必须遵守来源边界。
 - `skills/persona-style-builder` 负责把松散人物设定整理成可复用 NPC 人格卡、口吻规则、知识边界和运行提示。
-- `skills/npc-live-roleplay` 负责真人桌边感、括号式 OOC 和训练反馈；NPC Skill 使用它来压住“太像 AI”的回复习惯。
+- `skills/npc-live-roleplay` 负责真人桌边感、括号式 OOC 和训练反馈；NPC 扮演规则使用它来压住“太像 AI”的回复习惯。
 - SQLite 的 `narrative_events` 保存 NPC 回复、AI 回复和主动故事，作为后续连续性、人物记忆和 KP 摘要的依据。
 
 这层能力应该服务 KP，而不是替代 KP。它可以给 NPC 台词、状态建议、线索透露风险和关系变化提示，但不能擅自裁定隐藏真相、模组结局或玩家选择。
 
-## Skill 目标
+## 目标
 
-NPC Skill 负责把一条玩家消息转化为一个 NPC 的可发言回复，并同时给出后台状态变化建议。
+NPC 扮演规则负责把一条玩家消息转化为一个 NPC 的可发言回复，并同时给出后台状态变化建议。
 
 它应该做到：
 
@@ -240,6 +240,18 @@ AI 辅助可以覆盖三类工作：
 
 人物池也必须生长。主动故事应维护 3-6 个活跃故事元素，包括人物、组织、地点、物件、记录、传闻或场外压力；如果最近几段都围绕同一两个人，下一段要让其中一方退场，并前置新人物、地点、组织、物证或后果。新增人物可以只是一个清晰角色，例如值夜护士、旧书店老板、档案室实习生、失踪者家属、巡夜保安或小报记者，但必须带有具体动机、限制或痕迹。不能机械 A/B/A/B 轮流出场。
 
+主动故事必须先有全局配置 `PROACTIVE_CHAT_ENABLED=true`，再由 KP 在群里或已绑定群上下文的私聊里用指令启用本群播报：
+
+```text
+.播报 on
+.播报 off
+.播报 status
+.播报 模组 <已导入模组名或目录名>
+.播报 模组 <模组名> 风味：公开时代、地点、社会情景和禁剧透边界
+```
+
+`.播报 模组 <模组名>` 会优先读取 `data/module_imports/<module-id>/campaign/proactive_flavor.md` 作为玩家安全风味包；没有这个文件时，只使用 `canon/module_index.json` 的公开元数据。风味包只能影响时代氛围、社会情景、普通人的小故事和角色塑造灵感；不能泄露 keeper-only 真相、主线谜底、关键线索链、幕后动机或结局。
+
 ### 叙述者 Markdown 名片
 
 主动故事可以使用 Markdown 名片模拟“不同叙述者”的名字、头像和副标题。QQ 气泡身份仍然是官方机器人，名片只是正文里的视觉包装。
@@ -285,7 +297,7 @@ OPENAI_IMAGE_SIZE=1024x1024
 OPENAI_IMAGE_QUALITY=low
 OPENAI_IMAGE_OUTPUT_FORMAT=png
 OPENAI_IMAGE_REQUEST_TIMEOUT_MS=120000
-PROACTIVE_IMAGE_PROMPT=Create one square cinematic Chinese TRPG story illustration for the latest proactive story beat. Style: moody investigative horror, subtle supernatural tension, grounded scene details, painterly realism, no gore, no explicit violence, no text, no speech bubbles, no logos.
+PROACTIVE_IMAGE_PROMPT=为最新主动故事节拍生成一张正方形中文 TRPG 电影感插图。风格：阴郁调查恐怖、微妙超自然张力、真实场景细节、绘画写实感、不要血腥、不要露骨暴力、不要文字、不要气泡、不要 Logo。
 ```
 
 配图生成规则：
@@ -341,7 +353,7 @@ QQ 富媒体发送流程：
 
 ## 防剧透规则
 
-NPC Skill 必须遵守以下规则：
+NPC 扮演规则必须遵守以下规则：
 
 - 未被授权的秘密不能出现在 `spokenText` 中。
 - 未被授权的秘密也不能出现在括号发言中。
@@ -374,7 +386,7 @@ NPC 不能自己编骰点。
 - 需要暗骰时，后续实现专门的 KP-only 暗骰命令。
 - 模型可以提出“这里建议过一次心理学/说服/侦查”，但不能伪造检定结果。
 
-## MVP 实现建议
+## 最小可用版本实现建议
 
 当前代码已实现的入口：
 

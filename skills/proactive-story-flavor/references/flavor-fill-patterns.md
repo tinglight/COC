@@ -1,82 +1,104 @@
-# Flavor Fill Patterns
+# 风味填充模式
 
-Use this reference when the user asks for a batch of proactive story seeds, a reusable flavor prompt, or a module-specific flavor packet.
+当用户要求一批主动故事种子、可复用风味提示词，或某个模组专用风味包时，使用这份参考资料。
 
-## Source Map
+## 来源映射
 
-Extract only player-safe setting anchors unless the user asks for KP-only prep.
+除非用户要求 KP-only 备团，否则只提取玩家安全的设定锚点。
 
-| Anchor | Ask | Safe material |
+| 锚点 | 要问什么 | 安全材料 |
 | --- | --- | --- |
-| Era and place | What does daily life assume is normal? | transport, currency, newspapers, medicine, police, class etiquette |
-| Public pressure | What makes ordinary people careful? | debt, rationing, family reputation, missing persons, strikes, gossip, illness |
-| Institutions | Who controls records, space, or permission? | town office, station, church, hospital, school, guild, landlord, archive |
-| Information channels | How do rumors travel? | handbills, telegrams, tea stalls, church notices, servants, dock workers |
-| Material culture | What can be touched or noticed? | tickets, ledgers, ration cards, charms, keys, invoices, stains, repairs |
-| Social fault lines | Who is believed, ignored, or blamed? | outsiders, migrants, women, servants, soldiers, scholars, merchants |
+| 时代与地点 | 日常生活默认哪些事是正常的？ | 交通、货币、报纸、医疗、警察、阶级礼仪 |
+| 公开压力 | 什么会让普通人变得谨慎？ | 债务、配给、家族名誉、失踪人口、罢工、闲话、疾病 |
+| 机构 | 谁控制记录、空间或许可？ | 镇公所、车站、教堂、医院、学校、行会、地主、档案室 |
+| 信息渠道 | 传闻如何流动？ | 传单、电报、茶摊、教堂告示、仆人、码头工人 |
+| 物质文化 | 什么东西能被触摸或注意到？ | 车票、账本、配给卡、护符、钥匙、发票、污渍、修补痕迹 |
+| 社会裂缝 | 谁会被相信、忽视或责备？ | 外来者、移民、女性、仆人、士兵、学者、商人 |
 
-## Social Scene Menu
+## 社会场景菜单
 
-Pick one scene per beat. Do not cram several into a short broadcast.
+每个节拍选一个场景。短播报里不要塞多个场景。
 
-- Bureaucracy: a clerk delays a permit, a ledger row is crossed out, an official seal is missing.
-- Labor: night workers change shifts, a foreman hides an injury, dock hands argue over a strange cargo mark.
-- Medicine: a nurse refuses a ward, a pharmacy substitutes a cheaper powder, a quarantine note is rewritten.
-- Press and rumor: a small newspaper retracts one sentence, a printer runs out of a specific character block.
-- Family and reputation: a matchmaker returns a gift, a parent removes a name from a household register.
-- Religion and taboo: a temple donation box is sealed, a priest changes the order of prayers, an amulet seller refuses a coin.
-- Entertainment: a theater cancels one scene, a gramophone record skips at the same phrase, a club bans a patron.
-- Law and order: a patrol route shifts, a constable ignores one complaint, an evidence tag is replaced.
-- Transport and lodging: a ticket clerk reserves an empty berth, an innkeeper locks a room before sunset.
-- Commerce: a shop changes prices, a pawn ticket circulates, a vendor will not say who bought the last item.
-- Education and archives: a teacher tears one page from a lesson book, an archivist files a public record under the wrong year.
+- 官僚流程：职员拖延许可证、账本某行被划掉、公章丢失。
+- 劳工：夜班工人换班、工头隐瞒伤口、码头工人争论奇怪货标。
+- 医疗：护士拒绝一个病房、药房换成更便宜的药粉、隔离告示被重写。
+- 报纸与传闻：小报撤回一句话、排字工用完某个特定铅字。
+- 家庭与名誉：媒人退回礼物、父母从户籍册上划掉一个名字。
+- 宗教与禁忌：寺庙功德箱被封、神父/祭司改变祷告顺序、卖护符的人拒收一枚硬币。
+- 娱乐：戏院取消一幕、留声机唱片在同一句卡住、俱乐部禁止某个客人入内。
+- 治安：巡逻路线改变、警员无视一条报案、证物标签被替换。
+- 交通与住宿：售票员保留一个空铺位、客栈老板在日落前锁上一个房间。
+- 商业：店铺改价、当票流转、摊贩不肯说最后一件东西是谁买走的。
+- 教育与档案：教师从课本撕下一页、档案员把公开记录归到错误年份。
 
-## Seed Formula
+## 种子公式
 
-Use one row per possible broadcast seed:
+每个可能的播报种子填一行：
 
-| Field | Fill with |
+| 字段 | 填写内容 |
 | --- | --- |
-| Safe anchor | Public era/place/world rule from the module |
-| Social scene | One ordinary social setting from the menu |
-| Small disturbance | A choice, mistake, delay, refusal, rumor, or visible mismatch |
-| Trace | One concrete noun: ticket, ledger, seal, lamp, charm, glove, receipt, stain |
-| Consequence/question | What changed or what ordinary person now worries about |
-| PC inspiration | A roleplay angle: debt, duty, skepticism, ambition, guilt, loyalty |
-| No-spoiler guard | What hidden truth or main clue this seed must not reveal |
+| 安全锚点 | 来自模组的公开时代/地点/世界规则 |
+| 社会场景 | 从菜单里选一个普通社会场景 |
+| 小扰动 | 选择、错误、拖延、拒绝、传闻或可见错位 |
+| 痕迹 | 一个具体名词：车票、账本、印章、灯、护符、手套、收据、污渍 |
+| 后果/问题 | 什么改变了，或哪个普通人开始担心什么 |
+| PC 灵感 | 角色扮演角度：债务、职责、怀疑、野心、愧疚、忠诚 |
+| 防剧透边界 | 这个种子绝不能透露的隐藏真相或主线线索 |
 
-Compact seed sentence:
+压缩种子句：
 
 ```text
-Because [public pressure], [ordinary actor] does [small disturbance], leaving [trace] and raising [consequence/question].
+因为[公开压力]，[普通人]做出[小扰动]，留下[痕迹]，并引出[后果/问题]。
 ```
 
-## Cycle Mapping
+## 连续支线小弧
 
-Map flavor to the proactive story beat instead of adding unrelated color.
+当用户要求带开端、中段、结尾和伏笔揭露的支线故事时，使用这个模式。每个节拍都应适合单独作为一次主动播报，只揭示微支线自己的局部答案，不揭露 keeper-only canon 或主谜题。
 
-| Beat family | Flavor move |
-| --- | --- |
-| Grounding / exposition / ordinary world / ki | Show a normal social routine and one era-specific detail. |
-| Distortion / inciting incident / call / sho | Let one small public routine fail or arrive late. |
-| Foreshadow / threshold | Give a concrete trace that suggests a broader pattern without explaining it. |
-| Rising action / tests | Make a person, institution, or object respond under pressure. |
-| Crisis / ordeal / turn | Force a small choice, refusal, cover-up, or public misunderstanding. |
-| Burst / climax | Show the clearest visible event in the micro-thread without revealing the hidden cause. |
-| Fallout / falling action | Move focus to a witness, workplace, family, record, or place affected by the event. |
-| New normal / denouement / return-with-clue / reconciliation | Show how daily life adapts and leave a new safe hook. |
+| 节拍 | 目的 | 填写内容 |
+| --- | --- | --- |
+| 铺设 | 建立普通日常，并加入一个错误细节。 | 人物、工作地点、规则、错位物件 |
+| 加压 | 让某个人或机构作出回应。 | 拖延、拒绝、投诉、遮掩、代价 |
+| 转折 | 让错误细节连接到先前痕迹。 | 重复数字、改过的名字、归还的物件、证词修正 |
+| 回收 | 揭示支线局部解释或残留物。 | 公开记录矛盾、新规则、被锁物件、改变的习惯 |
 
-## Runtime Prompt Insert Template
+伏笔揭露规则：回收可以解释职员为什么藏表格、物件为什么移动、谁认出了痕迹，或本地规则为什么改变。它不能解释神话原因、犯人逻辑、必需线索路径、结局条件或 PC 的未来。
 
-Use this as a concise addition to a proactive story prompt, not as a replacement for scheduler rules:
+压缩小弧模板：
 
 ```text
-Module flavor rule: Treat the story as a player-safe background side incident tied to the current module's public era, place, institutions, and social pressures. Use ordinary social scenes such as bureaucracy, labor, medicine, rumors, family reputation, religion, transport, lodging, commerce, education, or archives. Do not reveal keeper-only truth, required clues, culprit logic, endings, or private NPC motives. The side incident may echo the module's atmosphere and public consequences, but must not solve or alter the main plot. Give one concrete era-appropriate trace and one small consequence/question that can inspire player characterization.
+1. [普通人]在[日常地点]注意到[错误细节]。
+2. [机构/人物]用[拖延/拒绝/冒险]回应，留下[痕迹]。
+3. [目击者/物件/记录]把[痕迹]连回第一个错误细节。
+4. [局部回收]改变一种日常，并留下[新的安全钩子]。
 ```
 
-## Output Examples
+## 循环映射
 
-Use examples as shape references, not reusable canon.
+把风味贴到主动故事节拍上，而不是额外加无关颜色。
+
+| 节拍家族 | 风味动作 |
+| --- | --- |
+| 铺底 / exposition / ordinary world / 起 | 展示一个正常社会日常和一个时代细节。 |
+| 扭曲 / inciting incident / call / 承 | 让一个小型公开日常失败或迟到。 |
+| 伏笔 / threshold | 给出一个暗示更大模式的具体痕迹，但不解释。 |
+| 上升行动 / tests | 让一个人、机构或物件在压力下回应。 |
+| 危机 / ordeal / turn | 迫使一次小选择、拒绝、遮掩或公开误会。 |
+| 爆点 / climax | 展示微支线里最清晰的可见事件，但不揭露隐藏原因。 |
+| 余波 / falling action | 把焦点移到受影响的目击者、工作场所、家庭、记录或地点。 |
+| 新常态 / denouement / return-with-clue / 合 | 展示日常如何适应，并留下新的安全钩子。 |
+
+## 运行时提示词插入模板
+
+把它作为主动故事提示词的简短补充，不要替代调度器规则：
+
+```text
+模组风味规则：把故事视为玩家安全的背景支线事件，绑定当前模组的公开时代、地点、机构和社会压力。使用普通社会场景，例如官僚流程、劳工、医疗、传闻、家族名誉、宗教、交通、住宿、商业、教育或档案。不要透露 keeper-only 真相、必需线索、犯人逻辑、结局或 NPC 私密动机。支线事件可以呼应模组氛围和公开后果，但不能解开或改变主线。给出一个具体且符合时代的痕迹，以及一个能启发玩家塑造角色的小后果/问题。
+```
+
+## 输出示例
+
+示例只用于参考形状，不作为可复用 canon。
 
 - 民国小城的报馆把寻人启事里的一行铅字拆下来锁进抽屉，排字工却发现那枚“归”字已经被人磨得只剩半边。
 - 火车站的茶房替三等车厢多留了一壶热水，理由是昨夜有人用同一张旧票根来回问了四遍末班车时间。

@@ -1,9 +1,10 @@
 import crypto from "node:crypto";
 import { cocCheck, displaySkillName, normalizeSkillName, validateTarget } from "../coc.js";
 import { DiceError, rollExpression, type RandomSource } from "../dice.js";
-import type { BotStorage, PrivateGroupRecipient, SkillInput } from "../storage.js";
-import type { AiReplyClient } from "../ai/client.js";
+import type { BotStorage, PrivateGroupRecipient, SkillInput, StoredNarrativeEvent } from "../storage.js";
+import { formatAiReplyInput, type AiReplyClient, type AiReplyRequest } from "../ai/client.js";
 import { buildAiContextInstructions, parseMemorySkillNote, rememberImportantPlayerStatement } from "../narrativeContext.js";
+import { resolveProactiveModuleFlavor } from "../proactiveFlavor.js";
 import {
   DEFAULT_MEMBER_ROLE,
   canUseAiCommands,
@@ -55,6 +56,11 @@ export type PrivateMessageSender = (request: PrivateMessageSendRequest) => Promi
 const PRIVATE_PUSH_WINDOW_MS = 30 * 24 * 60 * 60_000;
 const PRIVATE_PUSH_LIMIT_PER_WINDOW = 4;
 const PRIVATE_INBOX_LIMIT = 10;
+const PROMPT_PREVIEW_SECTION_CHARS = 1_400;
+const PROMPT_PREVIEW_TOTAL_CHARS = 4_800;
+const SESSION_LOG_DEFAULT_LIMIT = 10;
+const SESSION_LOG_LOOKBACK_LIMIT = 100;
+const SESSION_LOG_KINDS = new Set(["character_update", "session_event"]);
 
 export async function handleCommand(rawText: string, context: CommandContext, deps: CommandDeps): Promise<string | null> {
   const text = rawText.trim();
@@ -110,21 +116,51 @@ export async function handleCommand(rawText: string, context: CommandContext, de
         return checkCommand(rest, effectiveContext, deps.storage, rng);
       case "sc":
         return sanCheckCommand(rest, effectiveContext, deps.storage, rng);
+      case "hp":
+        return characterAttributeCommand("hp", rest, effectiveContext, deps.storage);
+      case "san":
+      case "理智":
+        return characterAttributeCommand("san", rest, effectiveContext, deps.storage);
+      case "log":
+      case "记录":
+        return sessionLogCommand(rest, effectiveContext, deps.storage);
+      case "event":
+      case "事件":
+        return sessionLogCommand(rest, effectiveContext, deps.storage, "重大事件");
+      case "progress":
+      case "进度":
+        return sessionLogCommand(rest, effectiveContext, deps.storage, "模组进度");
       case "ai":
       case "gpt":
       case "chat":
-        return aiCommand(rest, effectiveContext, deps);
+        return await aiCommand(rest, effectiveContext, deps);
+      case "aictx":
+      case "aiprompt":
+        return aiContextCommand(rest, effectiveContext, deps);
       case "npc":
-        return npcCommand(rest, effectiveContext, deps);
+        return await npcCommand(rest, effectiveContext, deps);
+      case "npctx":
+      case "npcctx":
+        return npcContextCommand(rest, effectiveContext, deps);
+      case "npcdraft":
+        return await npcDraftCommand(rest, effectiveContext, deps);
+      case "npcsave":
+        return npcSaveCommand(rest, effectiveContext, deps);
       case "secret":
       case "秘密":
-        return secretCommand(rest, effectiveContext, deps);
+        return await secretCommand(rest, effectiveContext, deps);
       case "npcdm":
       case "npc私聊":
-        return npcDirectMessageCommand(rest, effectiveContext, deps);
+        return await npcDirectMessageCommand(rest, effectiveContext, deps);
       case "train":
       case "训练":
-        return trainingCommand(rest, effectiveContext, deps);
+        return await trainingCommand(rest, effectiveContext, deps);
+      case "proactive":
+      case "broadcast":
+      case "主动":
+      case "播报":
+      case "风味":
+        return proactiveBroadcastCommand(rest, effectiveContext, deps);
       case "mem":
       case "memory":
       case "记忆":
@@ -213,18 +249,27 @@ function assertCommandPermission(command: string, rest: string, context: Command
 }
 
 function isAiCommand(command: string): boolean {
-  return ["ai", "gpt", "chat"].includes(command);
+  return ["ai", "gpt", "chat", "aictx", "aiprompt"].includes(command);
 }
 
 function isKeeperOnlyCommand(command: string): boolean {
   return [
     "npc",
+    "npctx",
+    "npcctx",
+    "npcdraft",
+    "npcsave",
     "secret",
     "秘密",
     "npcdm",
     "npc私聊",
     "train",
-    "训练"
+    "训练",
+    "proactive",
+    "broadcast",
+    "主动",
+    "播报",
+    "风味"
   ].includes(command);
 }
 
@@ -505,8 +550,9 @@ async function npcDirectMessageCommand(rest: string, context: EffectiveCommandCo
     })
     .filter((event) => (event.kind === "npc_reply" || event.kind === "npc_private_reply") && event.actorName === npcName)
     .slice(-6);
+  const studioContext = getNpcStudioPromptContext(deps.storage, npcName);
   const reply = await deps.aiClient.createReply({
-    text: buildNpcReplyPrompt(npcName, parsed.text, recentHistory),
+    text: buildNpcReplyPrompt(npcName, parsed.text, recentHistory, studioContext),
     scopeType: context.scopeType,
     scopeId: context.scopeId,
     userId: context.userId,
@@ -722,17 +768,10 @@ async function npcCommand(rest: string, context: CommandContext, deps: CommandDe
 
   const parsed = parseNpcCommand(rest);
   const bundle = loadNpcLiveRoleplaySkill(deps.npcSkillRoot);
-  const recentHistory = deps.storage
-    .getRecentNarrativeEvents({
-      scopeType: context.scopeType,
-      scopeId: context.scopeId,
-      kind: "npc_reply",
-      limit: 12
-    })
-    .filter((event) => event.actorName === parsed.npcName)
-    .slice(-6);
+  const recentHistory = getRecentNpcHistory(deps.storage, context, parsed.npcName);
+  const studioContext = getNpcStudioPromptContext(deps.storage, parsed.npcName);
   const reply = await deps.aiClient.createReply({
-    text: buildNpcReplyPrompt(parsed.npcName, parsed.playerText, recentHistory),
+    text: buildNpcReplyPrompt(parsed.npcName, parsed.playerText, recentHistory, studioContext),
     scopeType: context.scopeType,
     scopeId: context.scopeId,
     userId: context.userId,
@@ -750,6 +789,82 @@ async function npcCommand(rest: string, context: CommandContext, deps: CommandDe
     metadata: { command: "npc" }
   });
   return reply;
+}
+
+function npcContextCommand(rest: string, context: CommandContext, deps: CommandDeps): string {
+  if (rest === "") throw new Error("用法：.npctx 张管家 玩家问：昨晚钟楼亮灯时你在哪里？");
+
+  const parsed = parseNpcCommand(rest, "用法：.npctx 张管家 玩家问：昨晚钟楼亮灯时你在哪里？");
+  const bundle = loadNpcLiveRoleplaySkill(deps.npcSkillRoot);
+  const recentHistory = getRecentNpcHistory(deps.storage, context, parsed.npcName);
+  const studioContext = getNpcStudioPromptContext(deps.storage, parsed.npcName);
+  const instructions = buildNpcLiveRoleplayInstructions(bundle, "npc");
+  const prompt = buildNpcReplyPrompt(parsed.npcName, parsed.playerText, recentHistory, studioContext);
+
+  return formatModelContextPreview("NPC 上下文预览（不会调用模型）", [
+    {
+      title: "NPC Skill 材料摘要",
+      text: [
+        `SKILL.md：${bundle.skillText.length} 字`,
+        `live-table-style.md：${bundle.styleRules.length} 字`,
+        `training-log.md：${bundle.trainingLog.length} 字`,
+        `RP Studio 人格卡：${studioContext.persona ? studioContext.persona.name : "未匹配"}`,
+        `结构化训练样本：${studioContext.trainingExamples.length} 条`,
+        `玩家可见已确认锚点：${studioContext.memoryAnchors.length} 条`,
+        "真实请求会把这些材料合并进 NPC 行为约束；下面只截取一段便于排查。"
+      ].join("\n")
+    },
+    { title: "NPC 行为指令（截断预览）", text: instructions },
+    { title: "NPC 输入 Prompt", text: prompt }
+  ]);
+}
+
+async function npcDraftCommand(rest: string, context: CommandContext, deps: CommandDeps): Promise<string> {
+  if (rest === "") throw new Error("用法：.npcdraft 张管家 玩家问：昨晚钟楼亮灯时你在哪里？");
+  if (!deps.aiClient) throw new Error("AI 未启用，请先在 .env 配置 OPENAI_API_KEY，并确认 AI_REPLY_MODE 不是 off");
+
+  const parsed = parseNpcCommand(rest, "用法：.npcdraft 张管家 玩家问：昨晚钟楼亮灯时你在哪里？");
+  const bundle = loadNpcLiveRoleplaySkill(deps.npcSkillRoot);
+  const recentHistory = getRecentNpcHistory(deps.storage, context, parsed.npcName);
+  const studioContext = getNpcStudioPromptContext(deps.storage, parsed.npcName);
+  const prompt = [
+    buildNpcReplyPrompt(parsed.npcName, parsed.playerText, recentHistory, studioContext),
+    "",
+    "本次是 KP 试演候选模式，不要把任何候选写入既定事实。",
+    "请给出 3 个可直接复制到 QQ 的 NPC 回复候选。每个候选 1-2 句，彼此语气或信息保留程度要有差异；不要输出分析、评分或幕后解释。",
+    "输出格式：",
+    "1. ...",
+    "2. ...",
+    "3. ..."
+  ].join("\n");
+  const instructions = [
+    buildNpcLiveRoleplayInstructions(bundle, "npc"),
+    "当前是 NPC 候选回复模式。只产出候选台词，不宣布为已经发生，不要求玩家选择，不写入叙事历史。"
+  ].join("\n\n");
+
+  return deps.aiClient.createReply({
+    text: prompt,
+    scopeType: context.scopeType,
+    scopeId: context.scopeId,
+    userId: context.userId,
+    trigger: "command",
+    instructions
+  });
+}
+
+function npcSaveCommand(rest: string, context: CommandContext, deps: CommandDeps): string {
+  const parsed = parseNpcSaveCommand(rest);
+  deps.storage.addNarrativeEvent({
+    kind: "npc_reply",
+    scopeType: context.scopeType,
+    scopeId: context.scopeId,
+    userId: context.userId,
+    actorName: parsed.npcName,
+    inputText: parsed.playerText,
+    outputText: parsed.outputText,
+    metadata: { command: "npcsave", manuallyEdited: true }
+  });
+  return `已记录 ${parsed.npcName} 的修正版 NPC 回复；后续 .npc 会参考这条叙事历史。`;
 }
 
 async function trainingCommand(rest: string, context: CommandContext, deps: CommandDeps): Promise<string> {
@@ -780,8 +895,41 @@ async function trainingCommand(rest: string, context: CommandContext, deps: Comm
 async function aiCommand(rest: string, context: CommandContext, deps: CommandDeps): Promise<string> {
   if (rest === "") throw new Error("用法：.ai 你好，或 @机器人 你好");
   if (!deps.aiClient) throw new Error("AI 未启用，请先在 .env 配置 OPENAI_API_KEY，并确认 AI_REPLY_MODE 不是 off");
+  const request = buildAiCommandRequest(rest, context, deps);
+  const reply = await deps.aiClient.createReply(request);
+  deps.storage.addNarrativeEvent({
+    kind: "ai_reply",
+    scopeType: context.scopeType,
+    scopeId: context.scopeId,
+    userId: context.userId,
+    inputText: rest,
+    outputText: reply,
+    metadata: { command: "ai" }
+  });
+  rememberImportantPlayerStatement(deps.storage, context, rest, "ai_command");
+  return reply;
+}
+
+function aiContextCommand(rest: string, context: CommandContext, deps: CommandDeps): string {
+  if (rest === "") throw new Error("用法：.aictx 帮我描写餐桌");
+
+  const request = buildAiCommandRequest(rest, context, deps);
+  return formatModelContextPreview("AI 上下文预览（不会调用模型）", [
+    {
+      title: "固定系统规则摘要",
+      text: [
+        "真实请求会先包含项目固定系统规则：中文 QQ CoC 助手、短句自然、骰子/检定/SAN/角色卡走本地指令、禁止声称看到后台或 API key、普通聊天不泄露未公开剧情。",
+        "这部分是固定底座；下面重点展示本轮按身份、记忆、模组和历史动态拼出的材料。"
+      ].join("\n")
+    },
+    { title: "本轮附加上下文", text: request.instructions ?? "无。" },
+    { title: "模型输入消息", text: formatAiReplyInput(request) }
+  ]);
+}
+
+function buildAiCommandRequest(rest: string, context: CommandContext, deps: CommandDeps): AiReplyRequest {
   const speakerRole = getContextRole(context, deps.storage);
-  const reply = await deps.aiClient.createReply({
+  return {
     text: rest,
     scopeType: context.scopeType,
     scopeId: context.scopeId,
@@ -795,18 +943,189 @@ async function aiCommand(rest: string, context: CommandContext, deps: CommandDep
       speakerRole,
       moduleImportsRoot: deps.moduleImportsRoot
     })
+  };
+}
+
+function proactiveBroadcastCommand(rest: string, context: EffectiveCommandContext, deps: CommandDeps): string {
+  if (context.scopeType !== "group") {
+    throw new Error("请在群里使用 .播报，或先私聊 .bind 到群上下文后再使用。");
+  }
+
+  const trimmed = rest.trim();
+  if (trimmed === "" || /^(?:status|状态|查看|show|help|h|帮助)$/i.test(trimmed)) {
+    return proactiveBroadcastStatus(context, deps.storage);
+  }
+
+  const current = deps.storage.getProactiveGroupSettings(context.scopeId);
+  if (/^(?:on|start|enable|开启|开始|启用)$/i.test(trimmed)) {
+    deps.storage.setProactiveGroupSettings({
+      groupOpenid: context.scopeId,
+      enabled: true,
+      moduleId: current?.moduleId,
+      moduleName: current?.moduleName,
+      flavorText: current?.flavorText,
+      updatedByUserId: context.userId
+    });
+    return [
+      "已开启本群主动播报。",
+      current?.moduleName ? `当前沿用模组风味：${current.moduleName}` : "当前没有指定模组风味，会使用通用 CoC 背景小故事。",
+      "注意：运行环境仍需要 .env 里的 PROACTIVE_CHAT_ENABLED=true，调度器才会真正发送。"
+    ].join("\n");
+  }
+
+  if (/^(?:off|stop|disable|关闭|停止|暂停|停用)$/i.test(trimmed)) {
+    deps.storage.setProactiveGroupSettings({
+      groupOpenid: context.scopeId,
+      enabled: false,
+      moduleId: current?.moduleId,
+      moduleName: current?.moduleName,
+      flavorText: current?.flavorText,
+      updatedByUserId: context.userId
+    });
+    return "已关闭本群主动播报；已保存的模组风味会保留，之后 .播报 on 可继续使用。";
+  }
+
+  if (/^(?:clear|reset|清除|重置|通用)$/i.test(trimmed)) {
+    deps.storage.setProactiveGroupSettings({
+      groupOpenid: context.scopeId,
+      enabled: current?.enabled ?? false,
+      moduleId: null,
+      moduleName: null,
+      flavorText: null,
+      updatedByUserId: context.userId
+    });
+    return "已清除本群主动播报的模组风味；播报启用状态保持不变。";
+  }
+
+  const moduleRest = trimmed.replace(/^(?:module|mod|模组|flavor|风味|on|start|开启|开始)\s+/i, "").trim();
+  if (moduleRest === "") throw new Error(proactiveBroadcastUsage());
+
+  const parsed = parseProactiveFlavorCommand(moduleRest, deps.moduleImportsRoot);
+  deps.storage.setProactiveGroupSettings({
+    groupOpenid: context.scopeId,
+    enabled: true,
+    moduleId: parsed.moduleId,
+    moduleName: parsed.moduleName,
+    flavorText: parsed.flavorText,
+    updatedByUserId: context.userId
   });
-  deps.storage.addNarrativeEvent({
-    kind: "ai_reply",
-    scopeType: context.scopeType,
-    scopeId: context.scopeId,
-    userId: context.userId,
-    inputText: rest,
-    outputText: reply,
-    metadata: { command: "ai" }
-  });
-  rememberImportantPlayerStatement(deps.storage, context, rest, "ai_command");
-  return reply;
+
+  return [
+    `已开启本群主动播报，并注入模组风味：${parsed.moduleName}`,
+    parsed.sourceNote,
+    parsed.warnings.length > 0 ? parsed.warnings.map((warning) => `提醒：${warning}`).join("\n") : "",
+    `风味摘要：${clipForCommandReply(parsed.flavorText)}`,
+    "之后群里安静达到主动播报间隔时，故事会使用这个风味包，但不会把它当主线线索或剧透来源。",
+    "注意：运行环境仍需要 .env 里的 PROACTIVE_CHAT_ENABLED=true，调度器才会真正发送。"
+  ].filter((line) => line.trim() !== "").join("\n");
+}
+
+interface ParsedProactiveFlavorCommand {
+  moduleId: string;
+  moduleName: string;
+  flavorText: string;
+  sourceNote: string;
+  warnings: string[];
+}
+
+function parseProactiveFlavorCommand(rest: string, moduleImportsRoot?: string): ParsedProactiveFlavorCommand {
+  const split = splitModuleQueryAndFlavor(rest);
+  let moduleQuery = split.moduleQuery;
+  let supplement = split.supplement;
+  let resolved = resolveProactiveModuleFlavor(moduleQuery, moduleImportsRoot);
+
+  if (!resolved) {
+    const tokenSplit = splitFirstToken(rest);
+    if (tokenSplit && tokenSplit.tail.trim() !== "") {
+      const tokenResolved = resolveProactiveModuleFlavor(tokenSplit.head, moduleImportsRoot);
+      if (tokenResolved) {
+        resolved = tokenResolved;
+        moduleQuery = tokenSplit.head;
+        supplement = [tokenSplit.tail, supplement].filter(Boolean).join("\n");
+      } else if (supplement === undefined) {
+        moduleQuery = tokenSplit.head;
+        supplement = tokenSplit.tail;
+      }
+    }
+  }
+
+  if (!resolved && !supplement?.trim()) {
+    throw new Error(`没有找到已导入模组「${moduleQuery}」。请先导入模组，或写法：.播报 模组 ${moduleQuery} 风味：公开时代/地点/社会情景说明`);
+  }
+
+  const flavorParts = [
+    resolved?.flavorText,
+    supplement?.trim() ? `KP补充风味：\n${supplement.trim()}` : undefined
+  ].filter((part): part is string => part != null && part.trim() !== "");
+
+  const moduleName = resolved?.moduleName ?? moduleQuery;
+  return {
+    moduleId: resolved?.moduleId ?? moduleQuery,
+    moduleName,
+    flavorText: flavorParts.join("\n\n") || `模组：${moduleName}\n只使用群里已公开内容和通用 CoC 背景小故事，不触碰主线真相。`,
+    sourceNote: resolved
+      ? `来源：${resolved.source === "proactive_flavor" ? "campaign/proactive_flavor.md" : "模组公开元数据"}`
+      : "来源：本次指令提供的补充风味",
+    warnings: resolved?.warnings ?? []
+  };
+}
+
+function splitModuleQueryAndFlavor(rest: string): { moduleQuery: string; supplement?: string } {
+  const labeled = rest.match(/^([\s\S]+?)\s+(?:风味|flavor|补充|说明)[:：]\s*([\s\S]+)$/i);
+  if (labeled) {
+    return {
+      moduleQuery: labeled[1].trim(),
+      supplement: labeled[2].trim()
+    };
+  }
+
+  const delimited = rest.match(/^([\s\S]+?)\s*(?:\||；|;)\s*(?:(?:风味|flavor|补充|说明)[:：]?)?\s*([\s\S]+)$/i);
+  if (delimited) {
+    return {
+      moduleQuery: delimited[1].trim(),
+      supplement: delimited[2].trim()
+    };
+  }
+
+  return { moduleQuery: rest.trim() };
+}
+
+function splitFirstToken(rest: string): { head: string; tail: string } | undefined {
+  const match = rest.trim().match(/^(\S+)\s+([\s\S]+)$/);
+  if (!match) return undefined;
+  return {
+    head: match[1].trim(),
+    tail: match[2].trim()
+  };
+}
+
+function proactiveBroadcastStatus(context: EffectiveCommandContext, storage: BotStorage): string {
+  const settings = storage.getProactiveGroupSettings(context.scopeId);
+  const enabled = settings?.enabled ? "已开启" : "未开启";
+  const moduleLine = settings?.moduleName
+    ? `当前模组风味：${settings.moduleName}${settings.moduleId && settings.moduleId !== settings.moduleName ? `（${settings.moduleId}）` : ""}`
+    : "当前模组风味：未指定";
+  const flavorLine = settings?.flavorText ? `风味摘要：${clipForCommandReply(settings.flavorText)}` : "风味摘要：无";
+  return [
+    `本群主动播报：${enabled}`,
+    moduleLine,
+    flavorLine,
+    proactiveBroadcastUsage()
+  ].join("\n");
+}
+
+function proactiveBroadcastUsage(): string {
+  return [
+    "用法：",
+    ".播报 on / .播报 off / .播报 status",
+    ".播报 模组 <已导入模组名或目录名>",
+    ".播报 模组 <模组名> 风味：只写公开时代、地点、社会情景和禁剧透边界"
+  ].join("\n");
+}
+
+function clipForCommandReply(text: string): string {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  return normalized.length <= 180 ? normalized : `${normalized.slice(0, 177).trimEnd()}...`;
 }
 
 function playerMemoryCommand(rest: string, context: CommandContext, storage: BotStorage): string {
@@ -888,6 +1207,7 @@ function sanCheckCommand(rest: string, context: CommandContext, storage: BotStor
   const successLossExpression = match[1];
   const failureLossExpression = match[2];
   const explicitSan = match[3] == null ? undefined : Number(match[3]);
+  const shouldWriteBack = explicitSan == null;
   const storedSan = storage.getSkill(context.scopeType, context.scopeId, context.userId, "san");
   const san = explicitSan ?? storedSan?.value;
   if (san == null) throw new Error("缺少 SAN 数值，请用 .sc 0/1d6 60 或先 .st san60");
@@ -898,13 +1218,125 @@ function sanCheckCommand(rest: string, context: CommandContext, storage: BotStor
   const lossExpression = check.success ? successLossExpression : failureLossExpression;
   const loss = rollExpression(lossExpression, rng);
   const remaining = Math.max(0, san - loss.total);
-  return `SAN Check：1D100=${roll}/${san}，${check.rank}，损失 ${loss.total}（${loss.detail}），剩余参考 ${remaining}`;
+  const summary = `SAN Check：1D100=${roll}/${san}，${check.rank}，损失 ${loss.total}（${loss.detail}）`;
+
+  if (shouldWriteBack && storedSan && remaining !== san) {
+    storage.setSkills(context.scopeType, context.scopeId, context.userId, [{ key: "san", name: "SAN", value: remaining }]);
+    recordCharacterAttributeChange({
+      context,
+      storage,
+      attributeKey: "san",
+      attributeName: "SAN",
+      oldValue: san,
+      newValue: remaining,
+      command: "sc",
+      reason: summary
+    });
+    return `${summary}，剩余 ${remaining}（已写回角色卡）`;
+  }
+
+  if (shouldWriteBack && storedSan) {
+    return `${summary}，剩余 ${remaining}（SAN 未变化）`;
+  }
+
+  return `${summary}，剩余参考 ${remaining}`;
+}
+
+function characterAttributeCommand(attributeKey: "hp" | "san", rest: string, context: CommandContext, storage: BotStorage): string {
+  const attributeName = displaySkillName(attributeKey);
+  const trimmed = rest.trim();
+  const stored = storage.getSkill(context.scopeType, context.scopeId, context.userId, attributeKey);
+
+  if (trimmed === "" || /^(?:show|status|查看|状态)$/i.test(trimmed)) {
+    if (!stored) throw new Error(`没有找到 ${attributeName} 数值，请先用 .st ${attributeKey}10 保存。`);
+    return `${attributeName}：${stored.value}`;
+  }
+
+  const parsed = parseAttributeAdjustment(trimmed);
+  if (!parsed) throw new Error(`用法：.${attributeKey} -3 原因 或 .${attributeKey} 9`);
+
+  const oldValue = stored?.value;
+  if (parsed.kind === "relative" && oldValue == null) {
+    throw new Error(`没有找到 ${attributeName} 数值，请先用 .st ${attributeKey}10 保存，再使用 .${attributeKey} ${parsed.rawValue}`);
+  }
+
+  const newValue = parsed.kind === "relative"
+    ? Math.max(0, (oldValue ?? 0) + parsed.value)
+    : parsed.value;
+  validateTarget(newValue);
+
+  const name = stored?.name ?? attributeName;
+  storage.setSkills(context.scopeType, context.scopeId, context.userId, [{ key: attributeKey, name, value: newValue }]);
+
+  if (oldValue == null) {
+    const reason = parsed.reason ? `；原因：${parsed.reason}` : "";
+    return `已保存：${attributeName}${newValue}${reason}`;
+  }
+
+  if (oldValue === newValue) return `${attributeName} 未变化：${newValue}`;
+
+  const message = recordCharacterAttributeChange({
+    context,
+    storage,
+    attributeKey,
+    attributeName,
+    oldValue,
+    newValue,
+    command: attributeKey,
+    reason: parsed.reason
+  });
+  return `已更新：${message}`;
+}
+
+function sessionLogCommand(rest: string, context: CommandContext, storage: BotStorage, defaultCategory?: string): string {
+  const trimmed = rest.trim();
+  if (trimmed === "" || /^(?:help|h|帮助)$/i.test(trimmed)) return sessionLogHelpText();
+
+  const showMatch = trimmed.match(/^(?:show|list|查看|列表|最近)(?:\s+(\d{1,2}))?$/i);
+  if (showMatch) {
+    const limit = showMatch[1] == null ? SESSION_LOG_DEFAULT_LIMIT : Number(showMatch[1]);
+    return formatSessionLog(context, storage, limit);
+  }
+
+  const parsed = parseSessionLogEntry(trimmed, defaultCategory);
+  storage.addNarrativeEvent({
+    kind: "session_event",
+    scopeType: context.scopeType,
+    scopeId: context.scopeId,
+    userId: context.userId,
+    actorName: parsed.category,
+    outputText: parsed.text,
+    metadata: {
+      command: "log",
+      category: parsed.category,
+      visibility: "public"
+    }
+  });
+  return `已记录${parsed.category}：${parsed.text}`;
 }
 
 function setCharacterCommand(rest: string, context: CommandContext, storage: BotStorage): string {
   const skills = parseSkillAssignments(rest);
   if (skills.length === 0) throw new Error("用法：.st 侦查60 聆听50 san60");
+  const previousSkills = new Map(skills.map((skill) => [
+    skill.key,
+    storage.getSkill(context.scopeType, context.scopeId, context.userId, skill.key)
+  ]));
   storage.setSkills(context.scopeType, context.scopeId, context.userId, skills);
+  for (const skill of skills) {
+    const previous = previousSkills.get(skill.key);
+    if (previous == null || previous.value === skill.value) continue;
+    recordCharacterAttributeChange({
+      context,
+      storage,
+      attributeKey: skill.key,
+      attributeName: displaySkillName(skill.name),
+      oldValue: previous.value,
+      newValue: skill.value,
+      command: "st",
+      reason: "手动 .st 更新"
+    });
+  }
   return `已保存：${skills.map((skill) => `${displaySkillName(skill.name)}${skill.value}`).join("，")}`;
 }
 
@@ -912,6 +1344,126 @@ function showCharacterCommand(context: CommandContext, storage: BotStorage): str
   const skills = storage.getSkills(context.scopeType, context.scopeId, context.userId);
   if (skills.length === 0) return "还没有角色卡。可用 .st 侦查60 聆听50 san60 保存。";
   return `角色卡：${skills.map((skill) => `${displaySkillName(skill.name)}${skill.value}`).join("，")}`;
+}
+
+function parseAttributeAdjustment(rest: string): { kind: "absolute" | "relative"; value: number; rawValue: string; reason?: string } | undefined {
+  const match = rest.match(/^([+-]?\d{1,3})(?:\s+([\s\S]+))?$/);
+  if (!match) return undefined;
+
+  const rawValue = match[1];
+  const value = Number(rawValue);
+  if (!Number.isInteger(value)) return undefined;
+  return {
+    kind: /^[+-]/.test(rawValue) ? "relative" : "absolute",
+    value,
+    rawValue,
+    reason: match[2]?.trim() || undefined
+  };
+}
+
+function recordCharacterAttributeChange(input: {
+  context: CommandContext;
+  storage: BotStorage;
+  attributeKey: string;
+  attributeName: string;
+  oldValue: number;
+  newValue: number;
+  command: string;
+  reason?: string;
+}): string {
+  const delta = input.newValue - input.oldValue;
+  const reason = input.reason?.trim();
+  const message = [
+    `${input.attributeName} ${input.oldValue} -> ${input.newValue}（${formatSignedNumber(delta)}）`,
+    reason ? `原因：${reason}` : undefined
+  ].filter((part): part is string => part != null).join("；");
+
+  input.storage.addNarrativeEvent({
+    kind: "character_update",
+    scopeType: input.context.scopeType,
+    scopeId: input.context.scopeId,
+    userId: input.context.userId,
+    actorName: input.attributeName,
+    inputText: reason,
+    outputText: message,
+    metadata: {
+      command: input.command,
+      attributeKey: input.attributeKey,
+      attributeName: input.attributeName,
+      oldValue: input.oldValue,
+      newValue: input.newValue,
+      delta,
+      visibility: "public"
+    }
+  });
+  return message;
+}
+
+function parseSessionLogEntry(rest: string, defaultCategory?: string): { category: string; text: string } {
+  const match = rest.match(/^(\S+)(?:\s+([\s\S]+))?$/);
+  if (!match) throw new Error("用法：.log 事件 调查员打开钟楼门");
+
+  const category = resolveSessionLogCategory(match[1]);
+  if (category) {
+    const text = match[2]?.trim() ?? "";
+    if (text === "") throw new Error("用法：.log 事件 调查员打开钟楼门");
+    return { category, text };
+  }
+
+  return {
+    category: defaultCategory ?? "重大事件",
+    text: rest
+  };
+}
+
+function resolveSessionLogCategory(raw: string): string | undefined {
+  const normalized = raw.trim().toLowerCase();
+  if (["event", "事件", "重大事件", "剧情", "剧情事件"].includes(normalized)) return "重大事件";
+  if (["progress", "module", "进度", "模组", "模组进度", "章节"].includes(normalized)) return "模组进度";
+  if (["attr", "attribute", "属性", "属性变化", "数值", "数值变化"].includes(normalized)) return "属性变化";
+  if (["note", "备注", "桌边备注", "记录"].includes(normalized)) return "桌边备注";
+  return undefined;
+}
+
+function formatSessionLog(context: CommandContext, storage: BotStorage, requestedLimit: number): string {
+  const limit = Math.min(30, Math.max(1, Math.floor(requestedLimit)));
+  const events = storage.getRecentNarrativeEvents({
+    scopeType: context.scopeType,
+    scopeId: context.scopeId,
+    limit: SESSION_LOG_LOOKBACK_LIMIT
+  }).filter((event) => SESSION_LOG_KINDS.has(event.kind)).slice(-limit);
+
+  if (events.length === 0) {
+    return [
+      "还没有跑团记录。",
+      "可用 .log 事件 调查员打开钟楼门，或 .log 进度 第一幕结束。"
+    ].join("\n");
+  }
+
+  return [
+    `跑团记录（最近 ${events.length} 条，旧到新）：`,
+    ...events.map(formatSessionLogEvent)
+  ].join("\n");
+}
+
+function formatSessionLogEvent(event: StoredNarrativeEvent, index: number): string {
+  const category = event.kind === "character_update" ? "属性变化" : metadataString(event, "category") ?? "跑团记录";
+  return `${index + 1}. [${category}] ${clipSessionLogText(event.outputText)}`;
+}
+
+function metadataString(event: StoredNarrativeEvent, key: string): string | undefined {
+  const value = event.metadata[key];
+  return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
+}
+
+function formatSignedNumber(value: number): string {
+  return value > 0 ? `+${value}` : String(value);
+}
+
+function clipSessionLogText(text: string, maxChars = 220): string {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxChars) return normalized;
+  return `${normalized.slice(0, Math.max(0, maxChars - 3)).trimEnd()}...`;
 }
 
 function parseSkillAndOptionalValue(rest: string): { skillName: string; value?: number } {
@@ -940,19 +1492,95 @@ function parseSkillAssignments(rest: string): SkillInput[] {
   });
 }
 
-function parseNpcCommand(rest: string): { npcName: string; playerText: string } {
+function getRecentNpcHistory(storage: BotStorage, context: CommandContext, npcName: string) {
+  return storage
+    .getRecentNarrativeEvents({
+      scopeType: context.scopeType,
+      scopeId: context.scopeId,
+      kind: "npc_reply",
+      limit: 12
+    })
+    .filter((event) => event.actorName === npcName)
+    .slice(-6);
+}
+
+function getNpcStudioPromptContext(storage: BotStorage, npcName: string) {
+  return {
+    persona: storage.getPersonaCardByName(npcName),
+    trainingExamples: storage.getTrainingExamples({ npcName, limit: 8 }),
+    memoryAnchors: storage.getMemoryAnchors({
+      npcName,
+      visibility: "player",
+      status: "confirmed",
+      limit: 12
+    })
+  };
+}
+
+function parseNpcCommand(rest: string, usage = "用法：.npc 张管家 玩家问：昨晚钟楼亮灯时你在哪里？"): { npcName: string; playerText: string } {
   const match = rest.match(/^(\S+)[\s:：]+([\s\S]+)$/);
-  if (!match) throw new Error("用法：.npc 张管家 玩家问：昨晚钟楼亮灯时你在哪里？");
+  if (!match) throw new Error(usage);
   return {
     npcName: match[1].trim(),
     playerText: match[2].trim()
   };
 }
 
+function parseNpcSaveCommand(rest: string): { npcName: string; playerText: string; outputText: string } {
+  const match = rest.match(/^(\S+)\s+([\s\S]+)$/);
+  const usage = "用法：.npcsave 张管家 玩家问：昨晚钟楼亮灯时你在哪里？ || 张管家低声回答。";
+  if (!match) throw new Error(usage);
+
+  const split = match[2].match(/^([\s\S]+?)\s*(?:\|\||=>|NPC\s*回复[:：]|NPC\s*回应[:：]|回复[:：]|回应[:：])\s*([\s\S]+)$/i);
+  if (!split) throw new Error(usage);
+
+  const playerText = split[1].trim();
+  const outputText = split[2].trim();
+  if (playerText === "" || outputText === "") throw new Error(usage);
+  return {
+    npcName: match[1].trim(),
+    playerText,
+    outputText
+  };
+}
+
+interface ModelContextPreviewSection {
+  title: string;
+  text: string;
+}
+
+function formatModelContextPreview(title: string, sections: readonly ModelContextPreviewSection[]): string {
+  const body = [
+    title,
+    "用途：排查本轮模型会看到哪些材料；这条命令不会调用模型，也不会写入叙事历史。",
+    "",
+    ...sections.map((section) => formatPreviewSection(section))
+  ].join("\n");
+  return clipDebugBlock(body, PROMPT_PREVIEW_TOTAL_CHARS);
+}
+
+function formatPreviewSection(section: ModelContextPreviewSection): string {
+  const text = section.text.trim() === "" ? "无。" : section.text.trim();
+  return [
+    `【${section.title}｜${text.length}字】`,
+    clipDebugBlock(text, PROMPT_PREVIEW_SECTION_CHARS)
+  ].join("\n");
+}
+
+function clipDebugBlock(text: string, maxChars: number): string {
+  const normalized = text.replace(/\r\n/g, "\n").trim();
+  if (normalized.length <= maxChars) return normalized;
+  return `${normalized.slice(0, Math.max(0, maxChars - 18)).trimEnd()}\n...（已截断）`;
+}
+
 function trainingHelpText(): string {
   return [
     "NPC 训练命令：",
     ".npc 张管家 玩家问：昨晚钟楼亮灯时你在哪里？",
+    ".npcdraft 张管家 玩家问：... 生成 3 个候选，不写入历史",
+    ".npcsave 张管家 玩家问：... || 修正版回复 记录 KP 选中的台词",
+    ".npctx 张管家 玩家问：... 预览 NPC 上下文",
+    ".aictx 文本 预览 .ai 上下文",
     ".train 回复太像 AI，3/10，请改得更像真人桌边扮演",
     ".train show 查看训练记录摘录",
     ".train note 这次教训：括号不要解释写作策略"
@@ -973,16 +1601,21 @@ function helpText(): string {
     "CoC 骰娘指令：",
     ".r 1d100 / .r 2d6+3 原因",
     ".ra 侦查 或 .ra 侦查 60",
-    ".sc 0/1d6 60",
+    ".sc 0/1d6 60 / .sc 0/1d6（使用角色卡SAN并写回）",
     ".ai 你好",
-    ".npc 张管家 玩家问：昨晚钟楼亮灯时你在哪里？",
-    ".secret @成员 秘密线索 / .npcdm 张管家 @成员 玩家问：...",
-    ".pm on / .pm off / .inbox（私聊中使用）",
-    ".记住 角色决定保护同伴；用在：同伴遇险时 / .mem show",
-    ".train show / .train note 训练教训",
-    ".register KP|PL|OB / .role @成员 KP|PL|OB",
-    ".bind KP|PL|OB / .bind 绑定码 / .context / .unbind",
     ".st 侦查60 聆听50 san60",
+    ".hp -3 原因 / .san +2 原因",
+    ".log 事件 调查员打开钟楼门 / .log show",
     ".show"
+  ].join("\n");
+}
+
+function sessionLogHelpText(): string {
+  return [
+    "跑团记录指令：",
+    ".log 事件 调查员打开钟楼门",
+    ".log 进度 第一幕结束，进入旧宅",
+    ".hp -3 被咬伤 / .san +2 短暂休整",
+    ".log show 10 查看最近跑团记录"
   ].join("\n");
 }

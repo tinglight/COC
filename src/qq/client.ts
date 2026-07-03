@@ -12,6 +12,11 @@ interface UploadMediaResponse {
 
 export interface SendMessageOptions {
   isWakeup?: boolean;
+  mentionUserIds?: readonly string[];
+  messageReference?: {
+    messageId: string;
+    ignoreGetMessageError?: boolean;
+  };
 }
 
 export class QQOpenApiClient {
@@ -112,11 +117,12 @@ export class QQOpenApiClient {
 function buildMessageBody(message: OutgoingQQMessage, msgId: string | undefined, msgSeq: number, options: SendMessageOptions): Record<string, unknown> {
   const base = {
     ...(msgId == null ? {} : { msg_id: msgId, msg_seq: msgSeq }),
-    ...(options.isWakeup ? { is_wakeup: true } : {})
+    ...(options.isWakeup ? { is_wakeup: true } : {}),
+    ...buildMessageReferenceBody(options.messageReference)
   };
   if (message.type === "text") {
     return {
-      content: message.content,
+      content: withMentionPrefix(message.content, options.mentionUserIds, formatTextAtUser),
       msg_type: 0,
       ...base
     };
@@ -126,7 +132,7 @@ function buildMessageBody(message: OutgoingQQMessage, msgId: string | undefined,
     return {
       msg_type: 2,
       markdown: {
-        content: message.content
+        content: withMentionPrefix(message.content, options.mentionUserIds, formatMarkdownAtUser)
       },
       ...base
     };
@@ -139,6 +145,46 @@ function buildMessageBody(message: OutgoingQQMessage, msgId: string | undefined,
     },
     ...base
   };
+}
+
+function buildMessageReferenceBody(reference: SendMessageOptions["messageReference"]): Record<string, unknown> {
+  if (!reference) return {};
+  const messageId = reference.messageId.trim();
+  if (!messageId) return {};
+  return {
+    message_reference: {
+      message_id: messageId,
+      ignore_get_message_error: reference.ignoreGetMessageError ?? true
+    }
+  };
+}
+
+function withMentionPrefix(content: string, userIds: readonly string[] | undefined, formatMention: (userId: string) => string): string {
+  const mentions = buildMentionPrefix(userIds, formatMention);
+  return [mentions, content].filter((part) => part.trim() !== "").join(" ");
+}
+
+function buildMentionPrefix(userIds: readonly string[] | undefined, formatMention: (userId: string) => string): string {
+  if (!userIds || userIds.length === 0) return "";
+  const uniqueIds = [...new Set(userIds.map((userId) => userId.trim()).filter(Boolean))];
+  return uniqueIds.map(formatMention).filter((mention) => mention !== "").join(" ");
+}
+
+function formatTextAtUser(userId: string): string {
+  const safeUserId = userId.replace(/[<>"'&\s]/g, "");
+  return safeUserId === "" ? "" : `<@${safeUserId}>`;
+}
+
+function formatMarkdownAtUser(userId: string): string {
+  return `<qqbot-at-user id="${escapeXmlAttribute(userId)}" />`;
+}
+
+function escapeXmlAttribute(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 function buildImageSourceBody(source: QQImageSource): { url: string } | { file_data: string } {

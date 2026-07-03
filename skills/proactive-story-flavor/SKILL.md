@@ -1,94 +1,103 @@
 ---
 name: proactive-story-flavor
-description: Create, revise, or inject player-safe module-world flavor into QQ CoC bot proactive story broadcasts. Use when Codex needs to make automatic/proactive stories fit a running scenario's era, location, institutions, social tensions, rumors, workplaces, and side incidents while preserving the existing proactive story cycle, cast/world growth rules, anti-repetition rules, 1-2 sentence Chinese output, and no-spoiler/no-main-plot boundaries.
+description: 为 QQ CoC bot 的主动故事播报创建、修改或注入玩家安全的模组世界风味。用户提到氛围故事、故事包、风味故事、风味包、氛围包、模组故事包、支线小故事、伏笔揭露、W列车，或要求让自动/主动故事贴合某个跑团模组的时代、地点、机构、社会压力、传闻、工作场景和支线事件时使用；必须保留现有主动故事循环、人物/世界生长规则、防重复规则、1-2 句中文输出和不剧透/不碰主线边界。
 ---
 
-# Proactive Story Flavor
+# 主动故事风味
 
-## Overview
+## 概览
 
-Use this skill to turn a CoC/TRPG module's worldview into ambient side stories for the QQ bot's proactive broadcasts. The stories should deepen era atmosphere and give players roleplay inspiration, but must stay outside the core scenario solution, required clue chain, hidden truth, and irreversible campaign outcomes.
+使用这个 Skill，把 CoC/TRPG 模组的世界观转化为 QQ bot 主动播报里的背景支线故事。这些故事应加深时代氛围、给玩家提供角色扮演灵感，但必须避开核心谜底、必需线索链、隐藏真相和不可逆跑团结局。
 
-This skill complements `coc-module-importer`: use the importer first when raw module files need canon/campaign extraction, then use this skill to derive broadcast-safe flavor material.
+这个 Skill 与 `coc-module-importer` 互补：如果原始模组文件还没有拆出 canon/campaign，先使用导入 Skill；之后再用本 Skill 生成可安全播报的风味素材。
 
-## Workflow
+## 调用条件
 
-1. Establish audience and secrecy.
-   - Treat proactive broadcasts as player-facing unless the user explicitly requests KP-only prep.
-   - If keeper-only material is present, extract only public premises, era, location, tone, visible institutions, and already-revealed consequences.
-2. Extract flavor anchors from module or campaign context.
-   - Prefer concrete social surfaces: local jobs, bureaucracy, transport, shops, schools, hospitals, churches/temples, newspapers, rumors, class pressure, law enforcement, family obligations, and material culture.
-   - Keep hidden mythos causes, culprit logic, required clues, ending conditions, and private NPC motives out of broadcasts.
-3. Build a side-story palette.
-   - Create 3-6 active elements: people, factions, places, objects, records, debts, rumors, or offscreen pressures.
-   - Give each new element one motive, limitation, trace, or social role.
-4. Match the proactive loop.
-   - Use the scheduler's current beat internally when available; never print beat labels.
-   - Advance one observable change each time: choice, relationship shift, clue-state change, physical trace, false lead, cost, risk, or new question.
-5. Draft the broadcast or prompt insert.
-   - Default finished story output: 1-2 short Chinese sentences.
-   - Do not output analysis, JSON, bullet points, or story labels unless the user asks for planning artifacts.
-6. Check continuity.
-   - Avoid repeating recent images, actions, sounds, sentence shapes, or the same two recurring actors.
-   - If recent stories used a strong motif, switch to a different social surface and a different concrete trace.
+当用户提到 `氛围故事`、`故事包`、`风味故事`、`风味包`、`氛围包`、`模组故事包`、`模组氛围`、`自动故事`、`主动故事`、`支线小故事`、`伏笔`、`W列车`，或要求为模组风味补灵感时，先使用本 Skill。不要先凭通用恐怖写作直觉回答；应阅读本 `SKILL.md` 和相关参考资料，然后在玩家安全的支线边界内创作。
 
-## Safety Boundaries
+如果之前的回答漏用了本 Skill，或偏到了主线恐怖内容，先重申玩家安全边界，读取相关参考资料，再把素材改写成带可见痕迹和局部回收的支线事件。
 
-- Do not reveal keeper-only truth, culprit identity, hidden timelines, required clue routes, private NPC secrets, or endings.
-- Do not decide PC actions, invent dice results, force irreversible campaign outcomes, or create a mandatory clue unless the KP explicitly approves it.
-- Do not let side stories solve the main mystery or imply that players must chase them.
-- Do not import modern institutions, technology, slang, or public norms that conflict with the module era.
-- If a secret canon detail is tempting, translate it into a vague public symptom only when that symptom is already visible or KP-approved; otherwise omit it.
+## 工作流
 
-## Flavor Construction
+1. 确认受众和保密边界。
+   - 主动播报默认视为玩家可见，除非用户明确要求 KP-only 备团。
+   - 如果存在 keeper-only 资料，只提取公开前提、时代、地点、语气、可见机构和已公开后果。
+2. 从模组或 campaign 上下文提取风味锚点。
+   - 优先使用具体社会表层：本地职业、官僚流程、交通、商铺、学校、医院、教堂/寺庙、报纸、传闻、阶级压力、执法、家庭义务和物质文化。
+   - 不要把隐藏神话原因、犯人逻辑、必需线索、结局条件和 NPC 私密动机放进播报。
+3. 建立支线故事调色盘。
+   - 创建 3-6 个活跃元素：人物、派系、地点、物件、记录、债务、传闻或场外压力。
+   - 每个新元素至少给一个动机、限制、痕迹或社会角色。
+4. 匹配主动故事循环。
+   - 如果调度器提供当前节拍，可在内部使用；不要输出节拍标签。
+   - 每次推进一个可观察变化：选择、关系变化、线索状态变化、物理痕迹、假线索、代价、风险或新问题。
+5. 撰写播报或提示词插入段。
+   - 默认成品故事：1-2 句中文短句。
+   - 除非用户要求规划材料，否则不要输出分析、JSON、项目符号或故事标签。
+6. 检查连续性。
+   - 避免复用近期意象、动作、声音、句式或同一对反复出现的角色。
+   - 如果近期故事使用过强 motif，切换到不同社会表层和不同具体痕迹。
 
-Read `references/flavor-fill-patterns.md` when generating a batch of seeds, revising runtime prompts, or needing a structured palette.
+## 安全边界
 
-Build flavor from three layers:
+- 不透露 keeper-only 真相、犯人身份、隐藏时间线、必需线索路线、NPC 私密秘密或结局。
+- 不决定 PC 行动、不编造骰点结果、不强制不可逆跑团后果，也不创建强制线索，除非 KP 明确批准。
+- 不让支线故事解开主谜题，也不暗示玩家必须追查它。
+- 不引入与模组时代冲突的现代机构、技术、流行语或公共规范。
+- 如果某个秘密 canon 细节很适合使用，只能在该症状已经公开可见或经 KP 批准时，把它转化为模糊公开症状；否则省略。
 
-- **World rules**: era, geography, law, travel speed, media, medicine, money, religion, class, local taboos.
-- **Social scenes**: where ordinary people encounter pressure without touching the main plot.
-- **Visible traces**: objects, notices, damaged routines, overheard mistakes, missing records, minor debts, changed prices, or new rumors.
+## 风味构造
 
-Strong side stories usually follow:
+当需要生成一批种子、修改运行时提示词、建立结构化调色盘，或制作带铺垫、回收和伏笔揭露的支线故事弧时，阅读 `references/flavor-fill-patterns.md`。
+
+当用户要求 W列车、火车/车站/公司交通风味，或需要类似 W列车黑箱、错日期车票、车站传闻的示例时，阅读 `references/w-train-side-stories.md`。
+
+从三层材料构造风味：
+
+- **世界规则**：时代、地理、法律、交通速度、媒体、医疗、货币、宗教、阶级、本地禁忌。
+- **社会场景**：普通人在不接触主线的情况下遇到压力的地方。
+- **可见痕迹**：物件、告示、受损日常、偷听到的错误、缺失记录、小债务、价格变化或新传闻。
+
+强支线故事通常遵循：
 
 ```text
-public world pressure + ordinary actor + small choice/misunderstanding + visible trace + consequence/question
+公开世界压力 + 普通人物 + 小选择/误会 + 可见痕迹 + 后果/问题
 ```
 
-## Proactive Loop Contract
+## 主动循环契约
 
-Always preserve the bot's proactive story rules:
+始终保留 bot 的主动故事规则：
 
-- Keep the story to 1-2 short Chinese sentences unless asked for planning material.
-- Maintain an implicit roster of 3-6 active story elements.
-- Rotate focus through people, places, organizations, objects, records, rumors, and consequences instead of mechanically alternating two characters.
-- Make the current beat do work: grounding, distortion, foreshadowing, rising pressure, burst, fallout, new normal, return-with-clue, or contrast/turn/reconciliation.
-- Include at least one specific noun and one consequence or question that can matter later.
-- Keep the line atmospheric but actionable; avoid empty mood-only prose.
+- 除非用户要求规划材料，否则故事保持 1-2 句中文短句。
+- 维护一个隐含的 3-6 个活跃故事元素名单。
+- 在人物、地点、组织、物件、记录、传闻和后果之间轮换焦点，不机械地让两个角色来回出现。
+- 让当前节拍真正发挥作用：铺底、扭曲、伏笔、升压、爆点、余波、新常态、带线索回归，或对照/转折/调和。
+- 至少包含一个具体名词，以及一个之后可能有意义的后果或问题。
+- 保持有氛围但可行动；避免空泛的纯气氛句。
 
-## Deliverables
+## 交付物
 
-Choose the smallest useful output:
+选择最小有用输出：
 
-- **Finished broadcasts**: ready-to-send 1-2 sentence Chinese proactive stories.
-- **Flavor packet**: player-safe world anchors, active elements, forbidden spoilers, and a next-beat directive.
-- **Seed bank**: side-story seeds with social scene, visible trace, consequence, PC inspiration, and no-spoiler guard.
-- **Runtime prompt insert**: concise prompt text that can be added to `PROACTIVE_PROMPT` or code while preserving existing scheduler rules.
+- **成品播报**：可直接发送的 1-2 句中文主动故事。
+- **风味包**：玩家安全的世界锚点、活跃元素、禁用剧透和下一节拍指令。
+- **种子库**：包含社会场景、可见痕迹、后果、PC 灵感和防剧透边界的支线故事种子。
+- **运行时提示词插入段**：可加入 `PROACTIVE_PROMPT` 或代码的简短提示词，同时保留现有调度规则。
 
-When editing runtime files, preserve the contracts in `src/proactive.ts` and `docs/NPC_SKILL.md`; update tests or docs only if behavior changes.
+编辑运行时文件时，保留 `src/proactive.ts` 和 `docs/NPC_SKILL.md` 中的契约；只有行为变化时才更新测试或文档。
 
-## Quality Gate
+## 质量门槛
 
-Before delivering, verify:
+交付前确认：
 
-- The story fits the current module's public world and era.
-- The side event is related to the setting but not the core mainline.
-- It creates atmosphere and character inspiration without requiring player action.
-- It advances the proactive cycle rather than restating suspense.
-- It avoids recent repeated motifs and recurring two-character loops.
-- It is safe to show to players.
+- 故事符合当前模组的公开世界和时代。
+- 支线事件与设定相关，但不触碰核心主线。
+- 它能制造氛围和角色灵感，而不要求玩家必须行动。
+- 它推进主动故事循环，而不是重复悬疑气氛。
+- 它避开近期重复 motif 和双角色循环。
+- 它可以安全展示给玩家。
 
-## Resources
+## 资源
 
-- `references/flavor-fill-patterns.md`: palette, social-scene prompts, cycle mapping, seed-bank template, and runtime prompt insert template.
+- `references/flavor-fill-patterns.md`：调色盘、社会场景提示、循环映射、种子库模板和运行时提示词插入模板。
+- `references/w-train-side-stories.md`：W列车玩家安全支线故事锚点、填充调色盘、小弧模板和可直接发送的示例链。

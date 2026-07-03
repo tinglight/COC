@@ -16,12 +16,26 @@ export interface QQMessageEvent {
   content: string;
   timestamp?: string;
   group_openid?: string;
+  attachments?: QQMessageAttachment[];
   author?: {
     user_openid?: string;
     member_openid?: string;
     member_role?: string;
     bot?: boolean;
   };
+}
+
+export interface QQMessageAttachment {
+  content_type?: string;
+  contentType?: string;
+  filename?: string;
+  height?: number;
+  width?: number;
+  size?: number;
+  url?: string;
+  voice_wav_url?: string;
+  asr_refer_text?: string;
+  [key: string]: unknown;
 }
 
 export type MessageTarget =

@@ -45,6 +45,89 @@ describe("QQOpenApiClient", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
+  it("sends group text messages with legacy mentions and a message reference", async () => {
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "https://token.example/token") {
+        return jsonResponse({ access_token: "token", expires_in: 7200 });
+      }
+      if (url === "https://api.example/v2/groups/group%201/messages") {
+        expect(JSON.parse(String(init?.body))).toEqual({
+          content: "<@user1> <@user2> hello",
+          msg_type: 0,
+          msg_id: "source-msg",
+          msg_seq: 3,
+          message_reference: {
+            message_id: "quoted-msg",
+            ignore_get_message_error: true
+          }
+        });
+        return jsonResponse({});
+      }
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = new QQOpenApiClient({
+      appId: "app",
+      appSecret: "secret",
+      apiBaseUrl: "https://api.example",
+      tokenUrl: "https://token.example/token"
+    });
+
+    await client.sendTextMessage(
+      { type: "group", groupOpenid: "group 1" },
+      "hello",
+      "source-msg",
+      3,
+      {
+        mentionUserIds: ["user1", "user2"],
+        messageReference: { messageId: "quoted-msg" }
+      }
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("sends markdown messages with rich mentions", async () => {
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "https://token.example/token") {
+        return jsonResponse({ access_token: "token", expires_in: 7200 });
+      }
+      if (url === "https://api.example/v2/groups/group%201/messages") {
+        expect(JSON.parse(String(init?.body))).toEqual({
+          msg_type: 2,
+          markdown: {
+            content: "<qqbot-at-user id=\"user&amp;&quot;&lt;&gt;\" /> **hello**"
+          },
+          msg_id: "source-msg",
+          msg_seq: 4
+        });
+        return jsonResponse({});
+      }
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = new QQOpenApiClient({
+      appId: "app",
+      appSecret: "secret",
+      apiBaseUrl: "https://api.example",
+      tokenUrl: "https://token.example/token"
+    });
+
+    await client.sendMarkdownMessage(
+      { type: "group", groupOpenid: "group 1" },
+      "**hello**",
+      "source-msg",
+      4,
+      { mentionUserIds: ["user&\"<>"] }
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("sends c2c wakeup text messages with the is_wakeup flag", async () => {
     const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const url = String(input);

@@ -1,42 +1,42 @@
-# Import Policy
+# 导入策略
 
-## Goal
+## 目标
 
-Convert a TRPG module into structured material without pretending that the importer has perfect understanding. Preserve source anchors and separate locked canon from mutable campaign state.
+把 TRPG 模组转成结构化资料，同时承认导入器并非完美理解全文。保留来源锚点，并把锁定 canon 与可变 campaign 状态分开。
 
-## Classification
+## 分类
 
-- Metadata: module name, system, player count, length, era, stage, recommended skills, warnings.
-- Core rules: system rules, module-specific mechanics, hard constraints, required checks, secret-table mode, ending requirements.
-- Keeper-only truth: hidden cause, true timeline, culprit/black-box mechanism, late reveal, player-facing falsehoods.
-- World lore: factions, technology, geography, recurring terms, organizations, public beliefs.
-- Scene: intro, location, room, carriage, chapter, act, investigation area, chase, combat, finale.
-- Clue: documents, logs, physical evidence, surveillance, NPC testimony, check-gated facts.
-- NPC: named people, roles, logs by named persons, factions with agents, relationship-bearing entities.
-- PC branch: sections triggered by occupation, skill, belief, trauma, backstory, relationship, or character-card trait.
-- Ending: explicit ending labels, required conditions, aftermath variants.
-- Mutable hook: lines telling the KP to customize, rewrite, add, omit, route clues differently, or tailor content to PCs.
+- 元数据：模组名、系统、玩家人数、时长、时代、舞台、推荐技能、警告。
+- 核心规则：系统规则、模组专属机制、硬约束、必需检定、暗骰模式、结局要求。
+- Keeper-only 真相：隐藏原因、真实时间线、犯人/黑箱机制、后期揭示、玩家可见假象。
+- 世界 lore：派系、技术、地理、重复术语、组织、公开信念。
+- 场景：导入、地点、房间、车厢、章节、幕、调查区域、追逐、战斗、终局。
+- 线索：文件、日志、物证、监控、NPC 证言、需要检定解锁的事实。
+- NPC：具名人物、角色身份、具名日志作者、带代理人的派系、承载关系的实体。
+- PC 分支：由职业、技能、信念、创伤、背景故事、关系或角色卡特征触发的段落。
+- 结局：明确结局标签、必需条件、后日谈变体。
+- 可变钩子：提示 KP 自定义、改写、添加、省略、改变线索路线或按 PC 调整内容的句子。
 
-## PC-Dependent Modules
+## PC 相关模组
 
-For modules that change heavily by character card:
+对于会因角色卡大幅变化的模组：
 
-1. Keep the original branch trigger in canon.
-2. Extract a campaign branch row for each trigger.
-3. Do not choose a branch until PC cards are known.
-4. Let KP write the concrete adapted scene in campaign, not canon.
-5. Track which PC activated which branch and what world facts changed because of it.
+1. 原始分支触发条件保留在 canon。
+2. 每个触发条件提取一行 campaign 分支记录。
+3. 在 PC 角色卡已知前，不要替桌子选择分支。
+4. 让 KP 在 campaign 中写具体改编场景，不要写进 canon。
+5. 跟踪哪个 PC 激活了哪个分支，以及它改变了哪些世界事实。
 
-Use `hook_type` to separate scale:
+用 `hook_type` 区分规模：
 
-- `customization_policy`: the module's instruction for how KP should adapt content.
-- `major_pc_branch`: a scene, route, or ending-scale branch driven by PC traits.
-- `pc_micro_hook`: a smaller conditional detail, clue, easter egg, check modifier, or personal resonance.
+- `customization_policy`：模组关于 KP 如何调整内容的说明。
+- `major_pc_branch`：由 PC 特征驱动的场景、路线或结局级分支。
+- `pc_micro_hook`：更小的条件细节、线索、彩蛋、检定调整或个人共鸣。
 
-## Source Integrity
+## 来源完整性
 
-Use paragraph/block indexes from the imported `source_text.json`. If a generated summary conflicts with source text, source text wins. If a source document is updated, re-import to a new output folder or record a deliberate source-version migration.
+使用导入后 `source_text.json` 中的段落/块索引。如果生成摘要与来源文本冲突，以来源文本为准。如果源文档更新，重新导入到新输出目录，或记录一次有意的来源版本迁移。
 
-## Copyright And Table Use
+## 版权与桌边使用
 
-Do not paste large module passages back into chat unless the user explicitly requests them and has rights to share them. Local structured files may contain extracted source text for private table use. Summaries in chat should stay brief.
+除非用户明确要求且有权分享，不要把大段模组原文贴回聊天。为私人桌边使用而保存的本地结构化文件可以包含提取的来源文本。聊天里的摘要应保持简短。

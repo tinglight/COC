@@ -33,6 +33,10 @@ function testConfig(): AppConfig {
     openaiImageRequestTimeoutMs: 120_000,
     aiReplyMode: "mention",
     aiMaxReplyChars: 900,
+    aiChatImageEnabled: false,
+    aiChatImageChance: 0.08,
+    aiChatImageMinGapMs: 20 * 60_000,
+    aiChatImagePrompt: "Draw a reaction sticker.",
     proactiveChatEnabled: false,
     proactiveGroupOpenids: new Set(),
     proactiveIdleWindowMs: 45 * 60_000,
@@ -81,6 +85,42 @@ describe("server", () => {
     await app.inject({ method: "POST", url: "/qq/webhook", headers: { "content-type": "application/json" }, payload });
     await app.inject({ method: "POST", url: "/qq/webhook", headers: { "content-type": "application/json" }, payload });
     expect(sendTextMessage).toHaveBeenCalledTimes(1);
+    await app.close();
+    storage.close();
+  });
+
+  it("records incoming and outgoing webhook messages in the chat audit", async () => {
+    const storage = new BotStorage(":memory:");
+    const sendTextMessage = vi.fn(async () => undefined);
+    const app = createApp({ config: testConfig(), storage, qqClient: { sendTextMessage } });
+
+    await app.inject({
+      method: "POST",
+      url: "/qq/webhook",
+      headers: { "content-type": "application/json" },
+      payload: {
+        op: 0,
+        t: "C2C_MESSAGE_CREATE",
+        d: {
+          id: "msg-audit-c2c",
+          content: ".help",
+          author: { user_openid: "private1" }
+        }
+      }
+    });
+
+    expect(storage.getRecentChatAuditEntries({ scopeType: "c2c", scopeId: "private1", limit: 5 })).toEqual([
+      expect.objectContaining({
+        direction: "incoming",
+        messageId: "msg-audit-c2c",
+        content: ".help"
+      }),
+      expect.objectContaining({
+        direction: "outgoing",
+        messageId: "msg-audit-c2c",
+        eventType: "command_reply"
+      })
+    ]);
     await app.close();
     storage.close();
   });
@@ -219,7 +259,8 @@ describe("server", () => {
       { type: "group", groupOpenid: "group1" },
       "这是 AI 回复",
       "msg-ai-1",
-      1
+      1,
+      groupReplyOptions("msg-ai-1", "user1")
     );
     const events = storage.getRecentNarrativeEvents({
       scopeType: "group",
@@ -234,6 +275,368 @@ describe("server", () => {
       outputText: "这是 AI 回复",
       metadata: { trigger: "mention" }
     });
+    await app.close();
+    storage.close();
+  });
+
+  it("passes image attachments from an image-only group mention to AI", async () => {
+    const storage = new BotStorage(":memory:");
+    const sendTextMessage = vi.fn(async () => undefined);
+    const aiClient = { createReply: vi.fn(async () => "I can see the image.") };
+    const app = createApp({ config: testConfig(), storage, qqClient: { sendTextMessage }, aiClient });
+
+    await app.inject({
+      method: "POST",
+      url: "/qq/webhook",
+      headers: { "content-type": "application/json" },
+      payload: {
+        op: 0,
+        t: "GROUP_MESSAGE_CREATE",
+        d: {
+          id: "msg-ai-image-only",
+          content: "<@!bot> ",
+          group_openid: "group1",
+          attachments: [
+            {
+              content_type: "image/png",
+              filename: "clue.png",
+              width: 640,
+              height: 480,
+              size: 12345,
+              url: "https://example.com/clue.png"
+            }
+          ],
+          author: { member_openid: "user1" }
+        }
+      }
+    });
+
+    expect(aiClient.createReply).toHaveBeenCalledWith(expect.objectContaining({
+      text: expect.stringContaining("User sent 1 image attachment"),
+      trigger: "mention",
+      images: [
+        expect.objectContaining({
+          imageUrl: "https://example.com/clue.png",
+          contentType: "image/png",
+          filename: "clue.png",
+          width: 640,
+          height: 480,
+          size: 12345
+        })
+      ]
+    }));
+    expect(sendTextMessage).toHaveBeenCalledWith(
+      { type: "group", groupOpenid: "group1" },
+      "I can see the image.",
+      "msg-ai-image-only",
+      1,
+      groupReplyOptions("msg-ai-image-only", "user1")
+    );
+    expect(storage.getRecentChatAuditEntries({ scopeType: "group", scopeId: "group1", direction: "incoming", limit: 5 })).toEqual([
+      expect.objectContaining({
+        messageId: "msg-ai-image-only",
+        content: "",
+        metadata: expect.objectContaining({
+          attachmentCount: 1,
+          imageAttachments: [
+            expect.objectContaining({
+              imageUrl: "https://example.com/clue.png",
+              contentType: "image/png"
+            })
+          ]
+        })
+      })
+    ]);
+    await app.close();
+    storage.close();
+  });
+
+  it("passes text and image attachments from a group mention to AI", async () => {
+    const storage = new BotStorage(":memory:");
+    const sendTextMessage = vi.fn(async () => undefined);
+    const aiClient = { createReply: vi.fn(async () => "The screenshot shows a clue.") };
+    const app = createApp({ config: testConfig(), storage, qqClient: { sendTextMessage }, aiClient });
+
+    await app.inject({
+      method: "POST",
+      url: "/qq/webhook",
+      headers: { "content-type": "application/json" },
+      payload: {
+        op: 0,
+        t: "GROUP_AT_MESSAGE_CREATE",
+        d: {
+          id: "msg-ai-text-image",
+          content: "<@!bot> what is in this screenshot?",
+          group_openid: "group1",
+          attachments: [
+            {
+              contentType: "image/jpeg",
+              fileUrl: "https://example.com/screenshot.jpg"
+            }
+          ],
+          author: { member_openid: "user1" }
+        }
+      }
+    });
+
+    expect(aiClient.createReply).toHaveBeenCalledWith(expect.objectContaining({
+      text: "what is in this screenshot?",
+      trigger: "mention",
+      images: [
+        expect.objectContaining({
+          imageUrl: "https://example.com/screenshot.jpg",
+          contentType: "image/jpeg"
+        })
+      ]
+    }));
+    await app.close();
+    storage.close();
+  });
+
+  it("can send an occasional image reaction after a group AI chat reply", async () => {
+    const storage = new BotStorage(":memory:");
+    const sendTextMessage = vi.fn(async () => undefined);
+    const sendImageMessage = vi.fn(async () => undefined);
+    const aiClient = { createReply: vi.fn(async () => "先别急，我已经开始翻档案了。") };
+    const imageClient = { createImage: vi.fn(async () => ({ fileData: "base64-meme", mimeType: "image/png" as const })) };
+    const app = createApp({
+      config: {
+        ...testConfig(),
+        aiChatImageEnabled: true,
+        aiChatImageChance: 1,
+        aiChatImagePrompt: "Draw a cute owl reaction sticker."
+      },
+      storage,
+      qqClient: { sendTextMessage, sendImageMessage },
+      aiClient,
+      imageClient,
+      random: () => 0
+    });
+
+    await app.inject({
+      method: "POST",
+      url: "/qq/webhook",
+      headers: { "content-type": "application/json" },
+      payload: {
+        op: 0,
+        t: "GROUP_AT_MESSAGE_CREATE",
+        d: {
+          id: "msg-ai-image-reaction",
+          content: "<@!bot> 帮我看看这条线索哪里怪",
+          group_openid: "group1",
+          author: { member_openid: "user1" }
+        }
+      }
+    });
+
+    expect(sendTextMessage).toHaveBeenCalledWith(
+      { type: "group", groupOpenid: "group1" },
+      "先别急，我已经开始翻档案了。",
+      "msg-ai-image-reaction",
+      1,
+      groupReplyOptions("msg-ai-image-reaction", "user1")
+    );
+    await waitForAssertion(() => expect(imageClient.createImage).toHaveBeenCalledTimes(1));
+    const [imageRequest] = imageClient.createImage.mock.calls[0] as unknown as [{ prompt: string; userId?: string }];
+    expect(imageRequest.prompt).toContain("帮我看看这条线索哪里怪");
+    expect(imageRequest.prompt).toContain("先别急，我已经开始翻档案了。");
+    expect(imageRequest.prompt).toContain("Caption candidates:");
+    expect(imageRequest.prompt).toContain("Do not use process labels");
+    expect(imageRequest.prompt).not.toContain("understandable without text");
+    expect(imageRequest.userId).toBe("ai-chat-reaction");
+    await waitForAssertion(() => expect(sendImageMessage).toHaveBeenCalledWith(
+      { type: "group", groupOpenid: "group1" },
+      { fileData: "base64-meme" }
+    ));
+    expect(storage.getRecentChatAuditEntries({ scopeType: "group", scopeId: "group1", direction: "outgoing", limit: 5 })).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ eventType: "ai_reply" }),
+        expect.objectContaining({ eventType: "ai_image_reaction", content: "AI chat image reaction" })
+      ])
+    );
+    await app.close();
+    storage.close();
+  });
+
+  it("does not send an automatic image reaction for low-atmosphere AI chat", async () => {
+    const storage = new BotStorage(":memory:");
+    const sendTextMessage = vi.fn(async () => undefined);
+    const sendImageMessage = vi.fn(async () => undefined);
+    const aiClient = { createReply: vi.fn(async () => "晚上八点。") };
+    const imageClient = { createImage: vi.fn(async () => ({ fileData: "base64-low", mimeType: "image/png" as const })) };
+    const app = createApp({
+      config: {
+        ...testConfig(),
+        aiChatImageEnabled: true,
+        aiChatImageChance: 1
+      },
+      storage,
+      qqClient: { sendTextMessage, sendImageMessage },
+      aiClient,
+      imageClient,
+      random: () => 0
+    });
+
+    await app.inject({
+      method: "POST",
+      url: "/qq/webhook",
+      headers: { "content-type": "application/json" },
+      payload: {
+        op: 0,
+        t: "GROUP_AT_MESSAGE_CREATE",
+        d: {
+          id: "msg-ai-image-low-atmosphere",
+          content: "<@!bot> 明天几点开始",
+          group_openid: "group1",
+          author: { member_openid: "user1" }
+        }
+      }
+    });
+
+    await waitForAssertion(() => expect(sendTextMessage).toHaveBeenCalledTimes(1));
+    expect(imageClient.createImage).not.toHaveBeenCalled();
+    expect(sendImageMessage).not.toHaveBeenCalled();
+    await app.close();
+    storage.close();
+  });
+
+  it("cools down automatic image reactions after one is sent", async () => {
+    const storage = new BotStorage(":memory:");
+    const sendTextMessage = vi.fn(async () => undefined);
+    const sendImageMessage = vi.fn(async () => undefined);
+    const aiClient = { createReply: vi.fn(async () => "先别急，我已经开始翻档案了。") };
+    const imageClient = { createImage: vi.fn(async () => ({ fileData: "base64-cooldown", mimeType: "image/png" as const })) };
+    const app = createApp({
+      config: {
+        ...testConfig(),
+        aiChatImageEnabled: true,
+        aiChatImageChance: 1,
+        aiChatImageMinGapMs: 20 * 60_000
+      },
+      storage,
+      qqClient: { sendTextMessage, sendImageMessage },
+      aiClient,
+      imageClient,
+      random: () => 0
+    });
+
+    for (const id of ["msg-ai-image-cooldown-1", "msg-ai-image-cooldown-2"]) {
+      await app.inject({
+        method: "POST",
+        url: "/qq/webhook",
+        headers: { "content-type": "application/json" },
+        payload: {
+          op: 0,
+          t: "GROUP_AT_MESSAGE_CREATE",
+          d: {
+            id,
+            content: "<@!bot> 笑死，侦查又大失败了，这算线索吗",
+            group_openid: "group1",
+            author: { member_openid: "user1" }
+          }
+        }
+      });
+      if (id.endsWith("-1")) {
+        await waitForAssertion(() => expect(imageClient.createImage).toHaveBeenCalledTimes(1));
+      }
+    }
+
+    await waitForAssertion(() => expect(sendTextMessage).toHaveBeenCalledTimes(2));
+    expect(imageClient.createImage).toHaveBeenCalledTimes(1);
+    expect(sendImageMessage).toHaveBeenCalledTimes(1);
+    await app.close();
+    storage.close();
+  });
+
+  it("always sends an image reaction for explicit group image requests", async () => {
+    const storage = new BotStorage(":memory:");
+    const sendTextMessage = vi.fn(async () => undefined);
+    const sendImageMessage = vi.fn(async () => undefined);
+    const aiClient = { createReply: vi.fn(async () => "我没有真实自拍，给你整张小鹰表情包。") };
+    const imageClient = { createImage: vi.fn(async () => ({ fileData: "base64-explicit-image", mimeType: "image/png" as const })) };
+    const app = createApp({
+      config: {
+        ...testConfig(),
+        aiChatImageEnabled: true,
+        aiChatImageChance: 0
+      },
+      storage,
+      qqClient: { sendTextMessage, sendImageMessage },
+      aiClient,
+      imageClient,
+      random: () => 0.99
+    });
+
+    await app.inject({
+      method: "POST",
+      url: "/qq/webhook",
+      headers: { "content-type": "application/json" },
+      payload: {
+        op: 0,
+        t: "GROUP_AT_MESSAGE_CREATE",
+        d: {
+          id: "msg-explicit-image-reaction",
+          content: "<@!bot> 发个照片看看",
+          group_openid: "group1",
+          author: { member_openid: "user1" }
+        }
+      }
+    });
+
+    expect(aiClient.createReply).toHaveBeenCalledWith(expect.objectContaining({
+      text: "发个照片看看",
+      instructions: expect.stringContaining("不要说自己完全不能发图")
+    }));
+    await waitForAssertion(() => expect(imageClient.createImage).toHaveBeenCalledTimes(1));
+    const [imageRequest] = imageClient.createImage.mock.calls[0] as unknown as [{ prompt: string; userId?: string }];
+    expect(imageRequest.prompt).toContain("发个照片看看");
+    expect(sendImageMessage).toHaveBeenCalledWith(
+      { type: "group", groupOpenid: "group1" },
+      { fileData: "base64-explicit-image" }
+    );
+    await app.close();
+    storage.close();
+  });
+
+  it("handles a leading mention delivered as a normal group message", async () => {
+    const storage = new BotStorage(":memory:");
+    const sendTextMessage = vi.fn(async () => undefined);
+    const aiClient = { createReply: vi.fn(async () => "plain group mention reply") };
+    const app = createApp({ config: testConfig(), storage, qqClient: { sendTextMessage }, aiClient });
+
+    await app.inject({
+      method: "POST",
+      url: "/qq/webhook",
+      headers: { "content-type": "application/json" },
+      payload: {
+        op: 0,
+        t: "GROUP_MESSAGE_CREATE",
+        d: {
+          id: "msg-ai-plain-group-mention",
+          content: "<@!bot> are you there?",
+          group_openid: "group1",
+          author: { member_openid: "user1" }
+        }
+      }
+    });
+
+    expect(aiClient.createReply).toHaveBeenCalledWith(expect.objectContaining({
+      text: "are you there?",
+      trigger: "mention"
+    }));
+    expect(sendTextMessage).toHaveBeenCalledWith(
+      { type: "group", groupOpenid: "group1" },
+      "plain group mention reply",
+      "msg-ai-plain-group-mention",
+      1,
+      groupReplyOptions("msg-ai-plain-group-mention", "user1")
+    );
+    expect(storage.getRecentNarrativeEvents({
+      scopeType: "group",
+      scopeId: "group1",
+      kind: "table_message",
+      limit: 5
+    })).toHaveLength(0);
     await app.close();
     storage.close();
   });
@@ -266,7 +669,8 @@ describe("server", () => {
       { type: "group", groupOpenid: "group1" },
       expect.stringContaining("OB"),
       "msg-ai-ob",
-      1
+      1,
+      groupReplyOptions("msg-ai-ob", "user1")
     );
     await app.close();
     storage.close();
@@ -302,6 +706,133 @@ describe("server", () => {
       kind: "table_message",
       limit: 5
     })).toHaveLength(1);
+    await app.close();
+    storage.close();
+  });
+
+  it("selectively answers group questions in all mode", async () => {
+    const storage = new BotStorage(":memory:");
+    const sendTextMessage = vi.fn(async () => undefined);
+    const aiClient = { createReply: vi.fn(async () => "先查抽屉，再看票根。") };
+    const app = createApp({
+      config: { ...testConfig(), aiReplyMode: "all" },
+      storage,
+      qqClient: { sendTextMessage },
+      aiClient
+    });
+
+    await app.inject({
+      method: "POST",
+      url: "/qq/webhook",
+      headers: { "content-type": "application/json" },
+      payload: {
+        op: 0,
+        t: "GROUP_MESSAGE_CREATE",
+        d: {
+          id: "msg-all-question",
+          content: "这个线索该怎么查？",
+          group_openid: "group1",
+          author: { member_openid: "user1" }
+        }
+      }
+    });
+
+    expect(aiClient.createReply).toHaveBeenCalledWith(expect.objectContaining({
+      text: "这个线索该怎么查？",
+      trigger: "all",
+      instructions: expect.stringContaining("全量群聊模式")
+    }));
+    expect(aiClient.createReply).toHaveBeenCalledWith(expect.objectContaining({
+      instructions: expect.stringContaining("人格优先")
+    }));
+    expect(sendTextMessage).toHaveBeenCalledWith(
+      { type: "group", groupOpenid: "group1" },
+      "先查抽屉，再看票根。",
+      "msg-all-question",
+      1,
+      groupReplyOptions("msg-all-question", "user1")
+    );
+    await app.close();
+    storage.close();
+  });
+
+  it("keeps low-signal group chatter quiet but recorded in all mode", async () => {
+    const storage = new BotStorage(":memory:");
+    const sendTextMessage = vi.fn(async () => undefined);
+    const aiClient = { createReply: vi.fn(async () => "不该发") };
+    const app = createApp({
+      config: { ...testConfig(), aiReplyMode: "all" },
+      storage,
+      qqClient: { sendTextMessage },
+      aiClient
+    });
+
+    await app.inject({
+      method: "POST",
+      url: "/qq/webhook",
+      headers: { "content-type": "application/json" },
+      payload: {
+        op: 0,
+        t: "GROUP_MESSAGE_CREATE",
+        d: {
+          id: "msg-all-chatter",
+          content: "哈哈哈",
+          group_openid: "group1",
+          author: { member_openid: "user1" }
+        }
+      }
+    });
+
+    expect(aiClient.createReply).not.toHaveBeenCalled();
+    expect(sendTextMessage).not.toHaveBeenCalled();
+    expect(storage.getRecentNarrativeEvents({
+      scopeType: "group",
+      scopeId: "group1",
+      kind: "table_message",
+      limit: 5
+    })).toHaveLength(1);
+    await app.close();
+    storage.close();
+  });
+
+  it("answers direct bot address in all mode", async () => {
+    const storage = new BotStorage(":memory:");
+    const sendTextMessage = vi.fn(async () => undefined);
+    const aiClient = { createReply: vi.fn(async () => "收到收到，我来捋。") };
+    const app = createApp({
+      config: { ...testConfig(), aiReplyMode: "all" },
+      storage,
+      qqClient: { sendTextMessage },
+      aiClient
+    });
+
+    await app.inject({
+      method: "POST",
+      url: "/qq/webhook",
+      headers: { "content-type": "application/json" },
+      payload: {
+        op: 0,
+        t: "GROUP_MESSAGE_CREATE",
+        d: {
+          id: "msg-all-direct-address",
+          content: "小豆包，帮我总结一下",
+          group_openid: "group1",
+          author: { member_openid: "user1" }
+        }
+      }
+    });
+
+    expect(aiClient.createReply).toHaveBeenCalledWith(expect.objectContaining({
+      text: "小豆包，帮我总结一下",
+      trigger: "all"
+    }));
+    expect(sendTextMessage).toHaveBeenCalledWith(
+      { type: "group", groupOpenid: "group1" },
+      "收到收到，我来捋。",
+      "msg-all-direct-address",
+      1,
+      groupReplyOptions("msg-all-direct-address", "user1")
+    );
     await app.close();
     storage.close();
   });
@@ -381,7 +912,8 @@ describe("server", () => {
       { type: "group", groupOpenid: "group1" },
       "已记入这个玩家的关键人物记忆。使用时机：老朋友遇险时",
       "msg-memory-skill",
-      1
+      1,
+      groupReplyOptions("msg-memory-skill", "user1")
     );
     expect(storage.getRecentPlayerMemories({
       scopeType: "group",
@@ -432,7 +964,8 @@ describe("server", () => {
       { type: "c2c", userOpenid: "private1" },
       "bound answer",
       "msg-bound-c2c",
-      1
+      1,
+      c2cReplyOptions("msg-bound-c2c")
     );
     expect(storage.getRecentNarrativeEvents({
       scopeType: "group",
@@ -483,7 +1016,8 @@ describe("server", () => {
       { type: "group", groupOpenid: "group1" },
       expect.stringContaining("秘密线索处理完成：已发送 1"),
       "msg-secret",
-      1
+      1,
+      groupReplyOptions("msg-secret", "kp1")
     );
     await app.close();
     storage.close();
@@ -510,6 +1044,25 @@ describe("server", () => {
     storage.close();
   });
 });
+
+function groupReplyOptions(messageId: string, userId: string) {
+  return expect.objectContaining({
+    mentionUserIds: [userId],
+    messageReference: {
+      messageId,
+      ignoreGetMessageError: true
+    }
+  });
+}
+
+function c2cReplyOptions(messageId: string) {
+  return expect.objectContaining({
+    messageReference: {
+      messageId,
+      ignoreGetMessageError: true
+    }
+  });
+}
 
 function signForTest(secret: string, message: string): string {
   const prefix = Buffer.from("302e020100300506032b657004220420", "hex");

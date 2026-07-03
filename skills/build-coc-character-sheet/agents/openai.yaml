@@ -1,0 +1,4 @@
+interface:
+  display_name: "CoC 角色卡建卡引导"
+  short_description: "Guide members through CoC investigator sheet creation"
+  default_prompt: "Use $build-coc-character-sheet to guide a player through creating a CoC investigator sheet step by step."

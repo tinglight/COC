@@ -28,6 +28,42 @@ describe("BotStorage", () => {
     storage.close();
   });
 
+  it("stores proactive broadcast settings per group", () => {
+    const storage = new BotStorage(path.join(os.tmpdir(), `qq-coc-dice-proactive-settings-${Date.now()}.sqlite`));
+
+    expect(storage.getProactiveGroupSettings("group1")).toBeUndefined();
+    storage.setProactiveGroupSettings({
+      groupOpenid: "group1",
+      enabled: true,
+      moduleId: "w-train",
+      moduleName: "W列车",
+      flavorText: "公开风味：车站、报馆和票根。",
+      updatedByUserId: "kp1"
+    });
+
+    expect(storage.getProactiveGroupSettings("group1")).toMatchObject({
+      groupOpenid: "group1",
+      enabled: true,
+      moduleId: "w-train",
+      moduleName: "W列车",
+      flavorText: "公开风味：车站、报馆和票根。",
+      updatedByUserId: "kp1"
+    });
+    expect(storage.getEnabledProactiveGroups()).toEqual(["group1"]);
+
+    storage.setProactiveGroupSettings({
+      groupOpenid: "group1",
+      enabled: false,
+      moduleId: "w-train",
+      moduleName: "W列车",
+      flavorText: "公开风味：车站、报馆和票根。",
+      updatedByUserId: "kp1"
+    });
+    expect(storage.getProactiveGroupSettings("group1")?.enabled).toBe(false);
+    expect(storage.getEnabledProactiveGroups()).toEqual([]);
+    storage.close();
+  });
+
   it("stores narrative events with metadata", () => {
     const storage = new BotStorage(path.join(os.tmpdir(), `qq-coc-dice-narrative-${Date.now()}.sqlite`));
     storage.addNarrativeEvent({
@@ -70,6 +106,47 @@ describe("BotStorage", () => {
       limit: 5
     });
     expect(allEvents.map((event) => event.kind)).toEqual(["npc_reply", "proactive_story"]);
+    storage.close();
+  });
+
+  it("stores chat audit entries for group and private messages", () => {
+    const storage = new BotStorage(path.join(os.tmpdir(), `qq-coc-dice-chat-audit-${Date.now()}.sqlite`));
+
+    storage.recordChatAudit({
+      direction: "incoming",
+      scopeType: "group",
+      scopeId: "group1",
+      userId: "member1",
+      messageId: "msg1",
+      eventType: "GROUP_MESSAGE_CREATE",
+      content: "the desk drawer is locked",
+      metadata: { rawContent: "<@!bot> the desk drawer is locked" }
+    });
+    storage.recordChatAudit({
+      direction: "outgoing",
+      scopeType: "c2c",
+      scopeId: "private1",
+      userId: "bot",
+      eventType: "command_reply",
+      content: "roll result"
+    });
+
+    expect(storage.getRecentChatAuditEntries({ scopeType: "group", scopeId: "group1", limit: 5 })).toEqual([
+      expect.objectContaining({
+        direction: "incoming",
+        userId: "member1",
+        messageId: "msg1",
+        content: "the desk drawer is locked",
+        metadata: { rawContent: "<@!bot> the desk drawer is locked" }
+      })
+    ]);
+    expect(storage.getRecentChatAuditEntries({ direction: "outgoing", limit: 5 })).toEqual([
+      expect.objectContaining({
+        scopeType: "c2c",
+        scopeId: "private1",
+        content: "roll result"
+      })
+    ]);
     storage.close();
   });
 
@@ -232,6 +309,58 @@ describe("BotStorage", () => {
         inputText: "the hallway clock stopped",
         outputText: "the hallway clock stopped",
         metadata: { source: "group_message" }
+      })
+    ]);
+    storage.close();
+  });
+
+  it("stores NPC RP Studio persona cards, training examples, and memory anchors", () => {
+    const storage = new BotStorage(":memory:");
+
+    const persona = storage.savePersonaCard({
+      name: "林医生",
+      publicDescription: "教会临时诊所的医生。",
+      privateNotes: "KP-only：他知道旧码头真相。",
+      speechStyle: "克制、少说、常用反问。",
+      knowledgeBoundary: "只知道公开病历和已经问诊过的事。",
+      exampleDialogues: ["林医生：先坐下。"],
+      patiencePolicy: "重复三次后结束谈话。",
+      tags: ["雾桥镇", "医生"]
+    });
+    expect(storage.getPersonaCardByName("林医生")).toMatchObject({
+      id: persona.id,
+      speechStyle: "克制、少说、常用反问。",
+      tags: ["雾桥镇", "医生"]
+    });
+
+    storage.saveTrainingExample({
+      npcName: "林医生",
+      issueType: "太顺从",
+      badReply: "我什么都告诉你。",
+      correction: "保留医生的警惕。",
+      goodReply: "林医生把病历合上：你先说清楚来意。",
+      score: 8
+    });
+    expect(storage.getTrainingExamples({ npcName: "林医生" })).toEqual([
+      expect.objectContaining({
+        issueType: "太顺从",
+        score: 8,
+        goodReply: "林医生把病历合上：你先说清楚来意。"
+      })
+    ]);
+
+    storage.saveMemoryAnchor({
+      npcName: "林医生",
+      anchorType: "object",
+      label: "病历本",
+      content: "登记册里有被雨水洇开的名字。",
+      visibility: "player",
+      status: "confirmed"
+    });
+    expect(storage.getMemoryAnchors({ npcName: "林医生", visibility: "player", status: "confirmed" })).toEqual([
+      expect.objectContaining({
+        label: "病历本",
+        content: "登记册里有被雨水洇开的名字。"
       })
     ]);
     storage.close();

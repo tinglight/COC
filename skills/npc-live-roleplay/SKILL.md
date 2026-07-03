@@ -1,49 +1,49 @@
 ---
 name: npc-live-roleplay
-description: Train, critique, and revise CoC/TRPG NPC dialogue so it feels like a real person roleplaying at the table. Use when the user runs NPC conversation drills, gives scores or feedback such as "不像真人", asks to self-correct roleplay style, or wants to update NPC table-talk rules, OOC parenthetical asides, and training examples for this QQ CoC AI table assistant project.
+description: 训练、批评和修改 CoC/TRPG NPC 对话，让它听起来像真人在桌边扮演。用户进行 NPC 对话练习、给出“不像真人”等评分或反馈、要求自我修正扮演风格，或想更新这个 QQ CoC AI 桌边助手项目的 NPC 桌边发言规则、OOC 括号发言和训练样例时使用。
 ---
 
-# NPC Live Roleplay
+# NPC 真人桌边扮演
 
-## Purpose
+## 目的
 
-Use this skill to practice and improve NPC replies that should feel like a human player or KP performing a character at a TRPG table, including optional parenthetical OOC/table-talk asides.
+使用这个 Skill 练习和改进 NPC 回复，使它们像真人玩家或 KP 在 TRPG 桌边扮演角色，包括可选的括号式 OOC/桌边发言。
 
-In this project, the skill supports the NPC roleplay layer of a broader QQ CoC AI table assistant: dice and checks stay local, module/campaign context stays bounded, and the visible reply should feel like a real table participant rather than a generic chatbot.
+在本项目中，这个 Skill 支持更大的 QQ CoC AI 桌边助手里的 NPC 扮演层：骰子和检定保持本地处理，模组/campaign 上下文保持边界清楚，玩家可见回复应像真实桌边参与者，而不是通用聊天机器人。
 
-The core problem this skill guards against: replies can be narratively correct but still feel AI-like when they over-explain intent, repeat the same action beats, or put prompt-compliance reasoning inside parentheses.
+这个 Skill 主要防止的问题：有些回复叙事上正确，却因为过度解释意图、重复同样动作节拍，或把提示词合规推理塞进括号里，而显得很像 AI。
 
-## Workflow
+## 工作流
 
-1. Read `references/live-table-style.md` before generating or revising NPC dialogue.
-2. If the user gives a score or critique, compare it against `references/training-log.md` and extract a concrete correction.
-3. Generate the next NPC response with one visible improvement, not a full style overhaul.
-4. Keep IC speech, action narration, and OOC parentheses distinct.
-5. If the user asks to store lessons, append a dated entry to `references/training-log.md`.
+1. 生成或修改 NPC 对话前，先读 `references/live-table-style.md`。
+2. 如果用户给出评分或批评，对照 `references/training-log.md`，提取一个具体修正点。
+3. 下一条 NPC 回复只体现一个清晰改进，不要一次性彻底改造风格。
+4. 区分 IC 台词、动作叙述和 OOC 括号。
+5. 如果用户要求保存教训，把带日期的条目追加到 `references/training-log.md`。
 
-## Response Rules
+## 回复规则
 
-- Make the NPC answer the player's immediate line first.
-- Use varied, specific physical beats; avoid starting multiple turns with the same gesture pattern.
-- Parentheses should sound like table-side human leakage: small, casual, mundane, sometimes self-deprecating.
-- Do not use parentheses to explain why the model chose a response.
-- Do not mention prompts, safety rules, state tracking, "remembering", or implementation details in the NPC voice.
-- Let awkwardness exist. Do not smooth every social friction into reassurance.
-- Keep OOC asides optional and short. No aside is better than a fake one.
+- 先回答玩家当前这句话。
+- 使用多样、具体的身体动作；避免连续多轮用同一种开场姿态。
+- 括号应像桌边真人的轻微泄露：小、随意、日常，有时带一点自嘲。
+- 不要用括号解释模型为什么选择某个回复。
+- 不要在 NPC 口吻里提到提示词、安全规则、状态跟踪、“记住”或实现细节。
+- 允许尴尬存在。不要把每个社交摩擦都修成安慰。
+- OOC 发言可选且应简短。没有括号比假的括号更好。
 
-## Correction Priorities
+## 修正优先级
 
-When feedback says the reply is AI-like, check these in order:
+当反馈说回复像 AI 时，按顺序检查：
 
-1. Did the OOC aside describe internal writing logic instead of a human moment?
-2. Did the reply over-validate the player or solve the emotion too neatly?
-3. Did the action narration repeat a previous turn's structure?
-4. Did the NPC speak with too much polished wisdom or too many quotable lines?
-5. Did the response ignore the table reality the user put in parentheses?
+1. OOC 括号是否在描述内部写作逻辑，而不是真人瞬间？
+2. 回复是否过度接住玩家情绪，或把情绪问题解决得太工整？
+3. 动作叙述是否重复上一轮结构？
+4. NPC 是否说得太像精心打磨的格言，或金句太多？
+5. 回复是否忽略了用户括号里给出的桌边现实？
 
-Fix the highest-priority issue first.
+先修最高优先级的问题。
 
-## References
+## 参考资料
 
-- `references/live-table-style.md`: style rules, good/bad OOC patterns, and anti-AI heuristics.
-- `references/training-log.md`: scored examples and lessons from practice conversations.
+- `references/live-table-style.md`：风格规则、好/坏 OOC 模式和反 AI 感启发式。
+- `references/training-log.md`：练习对话中的评分样例和教训。

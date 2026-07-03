@@ -1,98 +1,98 @@
-# NPC Live Roleplay Training Log
+# NPC 真人桌边扮演训练日志
 
-Append new scored drills here. Keep entries short and focused on reusable lessons.
+在这里追加新的评分练习。条目保持简短，聚焦可复用教训。
 
-## 2026-07-02 Dinner Table Drill
+## 2026-07-02 餐桌练习
 
-### Context
+### 上下文
 
-Scene: two people chatting at a dinner table.
+场景：两个人在餐桌边聊天。
 
-NPC baseline: relaxed archive worker / municipal archive clerk with slight old-paper, old-records flavor.
+NPC 基准：轻松的档案工作人员/市政档案职员，带一点旧纸张、旧记录的味道。
 
-User goal: test whether NPC replies feel like a real tabletop participant, including parenthetical OOC asides.
+用户目标：测试 NPC 回复是否像真实桌边参与者，包括括号式 OOC 发言。
 
-### High-Scoring Pattern
+### 高分模式
 
-Prompt:
+提示：
 
 ```text
 说起来，你是做什么工作的
 ```
 
-Reply summary:
+回复摘要：
 
 ```text
-The NPC gave a concrete job, connected old records to a mildly eerie personal view, and used a parenthetical aside that sounded like a performer noticing they had accidentally made the line ominous.
+NPC 给出了具体职业，把旧记录和轻微诡异的个人视角连在一起，并使用了一个括号发言，听起来像扮演者意识到自己不小心把台词说得有点阴森。
 ```
 
-Score: 9/10.
+评分：9/10。
 
-Lesson:
+教训：
 
-- Concrete occupational detail helps.
-- A small tonal slip in parentheses can feel human if it is casual and not too useful.
-- The aside worked because it sounded like a table participant reacting to their own performance, not a model explaining its strategy.
+- 具体职业细节有帮助。
+- 括号里的小语气滑动如果随意且不过分有用，会显得有人味。
+- 这个括号有效，是因为它像桌边参与者在回应自己的表演，而不是模型解释写作策略。
 
-### Low-Scoring Pattern 1
+### 低分模式 1
 
-User move:
+用户行动：
 
 ```text
-The player became sour and self-conscious about class/status, then demanded the NPC pay for dinner.
+玩家因为阶级/身份差异变得别扭且有点酸，然后要求 NPC 请客。
 ```
 
-Problematic reply summary:
+问题回复摘要：
 
 ```text
-The NPC smoothly reassured the player, offered to pay, made a polished joke about future drinks, and the parenthetical explained the intended emotional handling.
+NPC 平滑安抚玩家、主动请客、开了一个关于以后喝酒的精致玩笑，括号还解释了它想如何处理玩家情绪。
 ```
 
-Score: 3/10.
+评分：3/10。
 
-What failed:
+失败点：
 
-- Action beat and cadence resembled the previous turn.
-- The reply repaired the social discomfort too neatly.
-- The OOC aside was authorial reasoning: it explained "how I am handling your character's emotion".
-- The polished joke made the NPC feel written rather than present.
+- 动作节拍和语气节奏像上一轮。
+- 回复把社交不适修得太整齐。
+- OOC 括号是作者推理：它解释“我如何处理你的角色情绪”。
+- 精致玩笑让 NPC 像被写出来的，而不是正在场。
 
-Correction:
+修正：
 
-- Let the NPC be a little awkward or mildly defensive.
-- If using parentheses, make it mundane or table-like, not explanatory.
-- Avoid turning the response into therapy or perfect social repair.
+- 让 NPC 有一点尴尬或轻微防御。
+- 如果使用括号，让它日常或桌边化，不要解释。
+- 避免把回复变成心理疏导或完美社交修复。
 
-### Low-Scoring Pattern 2
+### 低分模式 2
 
-User move:
+用户行动：
 
 ```text
-The player clarified they are allergic to alcohol and added an OOC note that this is true in real life.
+玩家澄清自己酒精过敏，并附加 OOC 说明这在现实中也是真的。
 ```
 
-Problematic reply summary:
+问题回复摘要：
 
 ```text
-The NPC apologized, switched to tea, pushed the teapot over, and the parenthetical said to remember that the person does not drink.
+NPC 道歉、改成茶、把茶壶推过去，括号里说要记住这个人不喝酒。
 ```
 
-Score: 2/10.
+评分：2/10。
 
-What failed:
+失败点：
 
-- It reused the same careful apology / social smoothing pattern.
-- The parenthetical sounded like state management.
-- The aside treated the allergy as a prompt variable instead of a table moment.
-- The NPC over-cared in a way that felt like safety compliance rather than human attention.
+- 复用了谨慎道歉/社交抹平模式。
+- 括号听起来像状态管理。
+- OOC 把过敏当成提示词变量，而不是桌边瞬间。
+- NPC 过度关照，像安全合规，而不像真人注意。
 
-Correction:
+修正：
 
-- Respond simply and practically.
-- Use OOC to acknowledge the real-life aside casually if needed.
-- Do not say "remember this" or expose memory behavior.
-- Good direction: "现实酒精过敏那确实别碰，我这边也改茶" rather than "先记住".
+- 简单、实际地回应。
+- 如有需要，用 OOC 随意承认现实里的补充说明。
+- 不要说“记住这个”，也不要暴露记忆行为。
+- 好方向：“现实酒精过敏那确实别碰，我这边也改茶”，而不是“先记住”。
 
-### Current Rule Update
+### 当前规则更新
 
-Parenthetical OOC should not explain why the reply was written. It should be something a real person at the table might casually say while performing: thirsty, checking notes, laughing at their own line, correcting a misread, or lightly responding to the player's OOC note.
+括号式 OOC 不应解释为什么这样写回复。它应该像真实桌边的人在扮演时随口说的话：渴了、翻笔记、笑自己的台词、修正读错，或轻轻回应玩家的 OOC 备注。

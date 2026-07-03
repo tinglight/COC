@@ -1,5 +1,6 @@
 import type { AiImageClient, AiReplyClient } from "./ai/client.js";
 import type { AppConfig, ProactiveNarrator } from "./config.js";
+import { buildProactiveFlavorPrompt } from "./proactiveFlavor.js";
 import type { QQOpenApiClient } from "./qq/client.js";
 import type { BotStorage } from "./storage.js";
 
@@ -22,8 +23,13 @@ type Logger = Pick<Console, "info" | "warn" | "error">;
 
 type ProactiveStorage = Pick<
   BotStorage,
-  "addNarrativeEvent" | "addProactiveLine" | "getProactiveLineCount" | "getRecentProactiveLines"
->;
+  | "addNarrativeEvent"
+  | "addProactiveLine"
+  | "getEnabledProactiveGroups"
+  | "getProactiveGroupSettings"
+  | "getProactiveLineCount"
+  | "getRecentProactiveLines"
+> & Partial<Pick<BotStorage, "recordChatAudit">>;
 
 interface GroupState {
   lastActivityAt: number;
@@ -279,6 +285,7 @@ export class ProactiveChatScheduler {
     for (const groupOpenid of this.deps.config.proactiveGroupOpenids) {
       this.ensureGroup(groupOpenid, now);
     }
+    this.ensureEnabledStorageGroups(now);
 
     this.timer = setInterval(() => {
       void this.tick().catch((error) => {
@@ -315,14 +322,16 @@ export class ProactiveChatScheduler {
     if (!this.deps.config.proactiveChatEnabled || !this.deps.aiClient) return;
 
     const now = this.now();
+    this.ensureEnabledStorageGroups(now);
     for (const [groupOpenid, state] of this.groups) {
-      if (!this.shouldSend(state, now)) continue;
+      if (!this.shouldSend(groupOpenid, state, now)) continue;
       await this.sendToGroup(groupOpenid, state, now);
     }
   }
 
-  private shouldSend(state: GroupState, now: number): boolean {
+  private shouldSend(groupOpenid: string, state: GroupState, now: number): boolean {
     if (state.sending) return false;
+    if (this.deps.storage && this.deps.storage.getProactiveGroupSettings(groupOpenid)?.enabled !== true) return false;
     if (now - state.lastActivityAt < this.deps.config.proactiveIdleWindowMs) return false;
     if (now - state.lastProactiveAt < this.deps.config.proactiveMinGapMs) return false;
     return this.random() <= this.deps.config.proactiveChance;
@@ -336,6 +345,21 @@ export class ProactiveChatScheduler {
       const storyPlan = selectProactiveStoryPlan(state.proactiveTurn);
       const text = await this.createStoryText(groupOpenid, state, storyPlan);
       const narrator = await this.sendStoryMessage(groupOpenid, text, state.proactiveTurn);
+      const proactiveSettings = this.deps.storage?.getProactiveGroupSettings(groupOpenid);
+      this.deps.storage?.recordChatAudit?.({
+        direction: "outgoing",
+        scopeType: "group",
+        scopeId: groupOpenid,
+        userId: "proactive-scheduler",
+        eventType: "proactive_story",
+        content: text,
+        metadata: {
+          proactiveTurn: state.proactiveTurn,
+          narratorName: narrator.name,
+          narratorSubtitle: narrator.subtitle,
+          markdownEnabled: this.deps.config.proactiveMarkdownEnabled
+        }
+      });
       await this.sendStoryImage(groupOpenid, text, state).catch((error) => {
         this.logger.warn({ err: error, groupOpenid }, "Proactive story image failed");
       });
@@ -356,7 +380,9 @@ export class ProactiveChatScheduler {
           storyPatternLabel: storyPlan.pattern.label,
           storyBeat: storyPlan.beat.id,
           storyBeatName: storyPlan.beat.name,
-          storyCycle: storyPlan.cycleNumber
+          storyCycle: storyPlan.cycleNumber,
+          proactiveFlavorModuleId: proactiveSettings?.moduleId,
+          proactiveFlavorModuleName: proactiveSettings?.moduleName
         }
       });
       state.proactiveTurn += 1;
@@ -375,7 +401,7 @@ export class ProactiveChatScheduler {
 
     for (let attempt = 0; attempt <= MAX_REPEAT_RETRIES; attempt += 1) {
       latestText = await this.deps.aiClient!.createReply({
-        text: this.buildPrompt(state, rejectedDrafts, storyPlan),
+        text: this.buildPrompt(groupOpenid, state, rejectedDrafts, storyPlan),
         scopeType: "group",
         scopeId: groupOpenid,
         userId: "proactive-scheduler",
@@ -450,7 +476,13 @@ export class ProactiveChatScheduler {
     return state;
   }
 
-  private buildPrompt(state: GroupState, rejectedDrafts: readonly string[] = [], storyPlan = selectProactiveStoryPlan(state.proactiveTurn)): string {
+  private ensureEnabledStorageGroups(now: number): void {
+    for (const groupOpenid of this.deps.storage?.getEnabledProactiveGroups() ?? []) {
+      this.ensureGroup(groupOpenid, now);
+    }
+  }
+
+  private buildPrompt(groupOpenid: string, state: GroupState, rejectedDrafts: readonly string[] = [], storyPlan = selectProactiveStoryPlan(state.proactiveTurn)): string {
     const proactiveHistory = state.proactiveLines.length === 0
       ? "None yet."
       : state.proactiveLines.map((line, index) => `${index + 1}. ${line}`).join("\n");
@@ -460,6 +492,7 @@ export class ProactiveChatScheduler {
     const rejected = rejectedDrafts.length === 0
       ? "None."
       : rejectedDrafts.map((line, index) => `${index + 1}. ${line}`).join("\n");
+    const flavorPrompt = buildProactiveFlavorPrompt(this.deps.storage?.getProactiveGroupSettings(groupOpenid));
 
     return [
       this.deps.config.proactivePrompt,
@@ -481,6 +514,8 @@ export class ProactiveChatScheduler {
       "- Avoid empty atmosphere-only prose. Include at least one specific noun and one consequence or question that can matter later.",
       "- Keep CoC/TRPG table boundaries: do not reveal keeper-only truth, decide player actions, invent dice results, or force irreversible campaign outcomes.",
       "",
+      flavorPrompt,
+      flavorPrompt ? "" : undefined,
       "Recent group messages, newest last:",
       recentMessages,
       "",
@@ -496,7 +531,7 @@ export class ProactiveChatScheduler {
       "- The next beat must advance the situation with a new observable change, not restate the same suspense.",
       "",
       "Continue the same thread. If there is no player context, continue your own quiet monologue or the same background world event. Keep it to 1-2 short Chinese sentences. Do not output story labels, beat names, analysis, JSON, or bullet points."
-    ].join("\n");
+    ].filter((line): line is string => line !== undefined).join("\n");
   }
 }
 

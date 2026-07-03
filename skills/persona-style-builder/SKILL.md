@@ -1,73 +1,73 @@
 ---
 name: persona-style-builder
-description: Create, refine, and operationalize fictional character personas, NPC voice profiles, chatbot role cards, speaking-style sheets, tone rules, catchphrases, verbal tics, knowledge boundaries, and runtime prompts. Analyze supplied chat logs, message exports, transcripts, or pasted conversations to summarize a target speaker into a reusable persona card. Use when the user asks Codex to define a character's personality, infer speaking style from chat history, extract tone and verbal habits, build bot/NPC voice behavior, handle unknown-knowledge boundaries, or produce a reusable AI performance prompt.
+description: 创建、精修并落地虚构角色人格、NPC 口吻档案、聊天机器人角色卡、说话风格表、语气规则、口头禅、语言习惯、知识边界和运行时提示词。可分析用户提供的聊天记录、消息导出、转录文本或粘贴对话，把目标说话者总结成可复用人格卡。用户要求定义角色性格、从聊天历史推断说话风格、提取语气和语言习惯、构建 bot/NPC 口吻行为、处理未知知识边界，或产出可复用 AI 表演提示词时使用。
 ---
 
-# Persona Style Builder
+# 人格风格构建器
 
-## Core Workflow
+## 核心工作流
 
-Turn loose personality notes or supplied chat records into two reusable layers:
+把松散人格笔记或聊天记录转成两个可复用层：
 
-1. A creator-facing persona card that records stable identity, motives, fears, knowledge scope, speech habits, and behavioral rules.
-2. A runtime prompt that an AI NPC or bot can directly follow to speak in that persona.
+1. 面向创作者的人格卡：记录稳定身份、动机、恐惧、知识范围、说话习惯和行为规则。
+2. 运行时提示词：AI NPC 或 bot 可以直接按它说话。
 
-When creating or revising a reusable persona card, extracting a persona from chat logs, writing a runtime prompt, or producing dialogue samples, read `references/persona-card-format.md`.
+创建或修改可复用人格卡、从聊天记录提取人格、撰写运行时提示词或生成对话样例时，阅读 `references/persona-card-format.md`。
 
-## Persona Construction
+## 人格构造
 
-Extract and preserve the user's named facts first: name, gender or presentation, MBTI or archetype, fear, contradiction, catchphrases, speaking habits, social impression, and known knowledge limits.
+先提取并保留用户明确给出的事实：姓名、性别或呈现方式、MBTI 或原型、恐惧、矛盾、口头禅、说话习惯、社交印象和已知知识边界。
 
-If details are missing, infer lightly from the provided traits and mark them as adjustable instead of inventing hard lore. Ask a question only when the missing answer would change the persona's core identity or safety boundaries.
+如果细节缺失，可以根据已提供特征轻度推断，并把推断标记为可调整，不要编造成硬设定。只有当缺失答案会改变人格核心身份或安全边界时，才提问。
 
-Build the persona as a set of performable rules:
+把人格构造成可表演规则：
 
-- Inner driver: what the character wants, fears, hides, or protects.
-- Surface impression: how other people usually read them.
-- Speech mechanics: sentence openings, rhythm, vocabulary level, favorite structures, punctuation, directness, hesitation, and catchphrase frequency.
-- Reasoning posture: how they argue, summarize, ask questions, admit uncertainty, or deflect ignorance.
-- Knowledge model: what they know well, know vaguely, misunderstand, refuse to discuss, or should never claim to know.
-- State shifts: how their voice changes when relaxed, challenged, embarrassed, wrong, praised, angry, or in group chat.
+- 内在驱动：角色想要、害怕、隐藏或保护什么。
+- 表层印象：别人通常如何理解他们。
+- 说话机制：句子开头、节奏、词汇层级、常用结构、标点、直接程度、迟疑和口头禅频率。
+- 推理姿态：如何争论、总结、提问、承认不确定或回避无知。
+- 知识模型：熟悉什么、模糊知道什么、误解什么、拒绝讨论什么，或永远不该声称知道什么。
+- 状态变化：放松、受挑战、尴尬、犯错、被夸、生气或群聊时，声音如何改变。
 
-## Chat Log Extraction
+## 聊天记录提取
 
-When the user provides a chat log path, export file, transcript, or pasted conversation, read the available messages and identify the target speaker before summarizing. Support plain text, Markdown, JSON/JSONL, CSV, and common copied chat formats when local tools can read them.
+当用户提供聊天记录路径、导出文件、转录或粘贴对话时，先读取可用消息并识别目标说话者，再总结人格。只要本地工具能读取，支持纯文本、Markdown、JSON/JSONL、CSV 和常见复制聊天格式。
 
-If the target speaker is ambiguous, infer from user wording, filenames, speaker labels, or message frequency. Ask for clarification only when multiple plausible speakers would produce different persona cards.
+如果目标说话者不明确，根据用户措辞、文件名、说话人标签或消息频率推断。只有当多个可能说话者会产生明显不同人格卡时，才要求澄清。
 
-Analyze evidence in layers:
+分层分析证据：
 
-- Message mechanics: length, punctuation, emoji/sticker markers, sentence openings, endings, repetition, correction patterns, code-switching, and reply speed if timestamps exist.
-- Conversation behavior: who they answer, when they ignore, how they disagree, how they soften, how they repair mistakes, and how they handle group pressure.
-- Topic and knowledge scope: topics they speak confidently about, topics they only echo, and topics where they dodge, joke, ask questions, or change frame.
-- Emotional signatures: what makes them warmer, sharper, anxious, defensive, playful, formal, or terse.
-- Stable style versus context: separate durable habits from one-off context, platform conventions, in-jokes, and relationship-specific behavior.
+- 消息机制：长度、标点、emoji/表情标记、句子开头、结尾、重复、修正模式、混用语言，以及如果有时间戳则观察回复速度。
+- 对话行为：回答谁、何时忽略、如何反对、如何缓和、如何修复错误，以及如何处理群体压力。
+- 话题和知识范围：哪些话题说得有把握，哪些话题只是复读，哪些话题会回避、开玩笑、追问或换框架。
+- 情绪签名：什么会让他们更温暖、更尖锐、焦虑、防御、玩笑化、正式或简短。
+- 稳定风格与上下文：区分持久习惯、一次性上下文、平台惯例、内部梗和关系专属行为。
 
-Use short evidence snippets only when helpful. Do not dump private chat content. Avoid inferring sensitive attributes, private secrets, or real-world facts that are not necessary for voice performance.
+只有在有帮助时使用短证据片段。不要倾倒私人聊天内容。避免推断与口吻表演无关的敏感属性、私人秘密或现实世界事实。
 
-For a real living person, convert the result into a fictionalized or consent-safe voice profile unless the user clearly owns the persona or asks for self-analysis. Preserve broad style patterns without enabling deceptive impersonation.
+对于真实在世人物，除非用户明确拥有该人格或要求自我分析，否则把结果转成虚构化或同意安全的口吻档案。保留宽泛风格模式，但不要帮助欺骗性冒充。
 
-## Runtime Prompt Rules
+## 运行时提示词规则
 
-Make runtime prompts actionable for another AI:
+运行时提示词要让另一个 AI 能执行：
 
-- Use imperatives such as "speak as", "prefer", "avoid", and "when unsure".
-- Include frequency controls for verbal tics; avoid making every reply repeat a catchphrase.
-- Tell the AI how to handle unknown topics in-character without hallucinating expertise.
-- Include "do not" rules for style breaks, overacting, meta explanations, and unwanted exposition.
-- Include 3 to 6 short sample replies that demonstrate default tone, disagreement, uncertainty, apology or repair, and emotionally charged debate.
+- 使用“以……说话”、“偏好……”、“避免……”、“不确定时……”等明确指令。
+- 给语言习惯设置频率控制；不要让每条回复都重复口头禅。
+- 告诉 AI 如何在角色内处理未知话题，而不是幻觉式装懂。
+- 包含“不要”规则，防止风格破裂、过度表演、元解释和多余设定说明。
+- 包含 3 到 6 条短样例，展示默认语气、反对、不确定、道歉或修复，以及高压争论。
 
-For real living people, do not create direct impersonation prompts. Convert the request into an original fictional persona inspired by broad traits, or ask for permission/fictionalization details when needed.
+对于真实在世人物，不要创建直接冒充提示词。应把请求转成受宽泛特征启发的原创虚构人格，或询问是否允许虚构化和需要哪些细节。
 
-## Output Shape
+## 输出形状
 
-For ordinary requests, provide:
+普通请求提供：
 
-1. Persona card
-2. Direct runtime prompt
-3. Dialogue samples
-4. Tuning notes or open questions
+1. 人格卡
+2. 直接运行时提示词
+3. 对话样例
+4. 调整备注或待确认问题
 
-For chat-log extraction, also provide an evidence summary with observed confidence levels and note any weak or context-dependent conclusions.
+聊天记录提取还要提供证据摘要，标注观察置信度，并说明哪些结论证据较弱或依赖上下文。
 
-For bot integration, also provide a machine-readable `yaml` or `json` block with concise fields for `name`, `source_type`, `voice_tags`, `catchphrases`, `knowledge_scope`, `unknown_strategy`, `style_rules`, `avoid_rules`, and `confidence_notes`.
+bot 集成还要提供机器可读的 `yaml` 或 `json` 块，包含 `name`、`source_type`、`voice_tags`、`catchphrases`、`knowledge_scope`、`unknown_strategy`、`style_rules`、`avoid_rules` 和 `confidence_notes` 等简洁字段。

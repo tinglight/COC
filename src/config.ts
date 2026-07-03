@@ -41,6 +41,10 @@ export interface AppConfig {
   openaiImageRequestTimeoutMs: number;
   aiReplyMode: "off" | "command" | "mention" | "all";
   aiMaxReplyChars: number;
+  aiChatImageEnabled: boolean;
+  aiChatImageChance: number;
+  aiChatImageMinGapMs: number;
+  aiChatImagePrompt: string;
   proactiveChatEnabled: boolean;
   proactiveGroupOpenids: Set<string>;
   proactiveIdleWindowMs: number;
@@ -183,6 +187,13 @@ export function loadConfig(): AppConfig {
     openaiImageRequestTimeoutMs: readNumber("OPENAI_IMAGE_REQUEST_TIMEOUT_MS", 120_000),
     aiReplyMode: readAiReplyMode(),
     aiMaxReplyChars: readNumber("AI_MAX_REPLY_CHARS", 900),
+    aiChatImageEnabled: readBoolean("AI_CHAT_IMAGE_ENABLED", false),
+    aiChatImageChance: readRatio("AI_CHAT_IMAGE_CHANCE", 0.08),
+    aiChatImageMinGapMs: minutesToMs("AI_CHAT_IMAGE_MIN_GAP_MINUTES", 20),
+    aiChatImagePrompt: readString(
+      "AI_CHAT_IMAGE_PROMPT",
+      "Create one compact square QQ chat reaction meme sticker inspired by the latest bot reply. Use an original cute owl tabletop assistant mascot, expressive body language, playful meme energy, simple composition, and a bold readable simplified Chinese caption when useful. Keep it like a small sticker, not a full illustration. No UI, no chat bubbles, no logos, no watermark, no tiny text."
+    ),
     proactiveChatEnabled: readBoolean("PROACTIVE_CHAT_ENABLED", false),
     proactiveGroupOpenids: readSet("PROACTIVE_GROUP_OPENIDS"),
     proactiveIdleWindowMs: minutesToMs("PROACTIVE_IDLE_MINUTES", 45),

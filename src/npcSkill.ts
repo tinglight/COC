@@ -1,5 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
+import { buildNpcPersonaConstraintBlock } from "./rpStudio.js";
+import type { StoredMemoryAnchor, StoredPersonaCard, StoredTrainingExample } from "./storage.js";
 
 export interface NpcLiveRoleplaySkillBundle {
   skillText: string;
@@ -16,6 +18,12 @@ export interface NpcHistoryLine {
   actorName?: string;
   inputText?: string;
   outputText: string;
+}
+
+export interface NpcReplyPromptContext {
+  persona?: StoredPersonaCard;
+  trainingExamples?: readonly StoredTrainingExample[];
+  memoryAnchors?: readonly StoredMemoryAnchor[];
 }
 
 export function defaultNpcSkillRoot(): string {
@@ -58,7 +66,12 @@ export function buildNpcLiveRoleplayInstructions(bundle: NpcLiveRoleplaySkillBun
   ].join("\n\n");
 }
 
-export function buildNpcReplyPrompt(npcName: string, playerText: string, recentHistory: readonly NpcHistoryLine[] = []): string {
+export function buildNpcReplyPrompt(
+  npcName: string,
+  playerText: string,
+  recentHistory: readonly NpcHistoryLine[] = [],
+  context: NpcReplyPromptContext = {}
+): string {
   const history = recentHistory.length === 0
     ? "暂无。"
     : recentHistory.map((line, index) => {
@@ -67,9 +80,15 @@ export function buildNpcReplyPrompt(npcName: string, playerText: string, recentH
         : `玩家：${line.inputText.trim()}\n`;
       return `${index + 1}. ${player}${line.actorName ?? npcName}：${line.outputText.trim()}`;
     }).join("\n");
+  const personaConstraint = buildNpcPersonaConstraintBlock(
+    context.persona,
+    context.trainingExamples ?? [],
+    context.memoryAnchors ?? []
+  );
 
   return [
     `NPC 名称：${npcName}`,
+    personaConstraint ? ["", personaConstraint].join("\n") : undefined,
     "",
     "最近同范围 NPC 叙事记录：",
     history,
@@ -78,7 +97,7 @@ export function buildNpcReplyPrompt(npcName: string, playerText: string, recentH
     playerText,
     "",
     "请根据本地 NPC 真人感训练规则，生成这名 NPC 此刻会说出口的一段中文回应。必须承接最近叙事记录，不能忘记、复读或轻微改写已经发生过的 NPC 发言。"
-  ].join("\n");
+  ].filter((part): part is string => part != null).join("\n");
 }
 
 export function buildTrainingPrompt(feedbackText: string): string {

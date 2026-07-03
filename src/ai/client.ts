@@ -11,14 +11,30 @@ export interface AiReplyRequest {
   speakerRole?: MemberRole;
   trigger: "command" | "mention" | "c2c" | "all" | "proactive";
   instructions?: string;
+  images?: readonly AiReplyImage[];
 }
 
 export interface AiReplyClient {
   createReply(request: AiReplyRequest): Promise<string>;
 }
 
+export interface AiReplyImage {
+  imageUrl: string;
+  detail?: "low" | "high" | "auto" | "original";
+  filename?: string;
+  contentType?: string;
+  width?: number;
+  height?: number;
+  size?: number;
+}
+
+type AiReplyContentPart =
+  | { type: "input_text"; text: string }
+  | { type: "input_image"; image_url: string; detail: "low" | "high" | "auto" | "original" };
+
 interface AiClientLogger {
   info(data: Record<string, unknown>, message: string): void;
+  error?(data: Record<string, unknown>, message: string): void;
 }
 
 export interface AiImageRequest {
@@ -52,7 +68,7 @@ export function createAiReplyClient(config: AppConfig, logger?: AiClientLogger):
 }
 
 export function createAiImageClient(config: AppConfig): AiImageClient | undefined {
-  if (!config.proactiveImageEnabled || config.openaiApiKey === "") return undefined;
+  if ((!config.proactiveImageEnabled && !config.aiChatImageEnabled) || config.openaiApiKey === "") return undefined;
   return new OpenAIAiImageClient(config);
 }
 
@@ -71,6 +87,7 @@ class OpenAIAiReplyClient implements AiReplyClient {
   }
 
   async createReply(request: AiReplyRequest): Promise<string> {
+    const startedAt = Date.now();
     try {
       this.logger?.info({
         model: this.config.openaiModel,
@@ -87,18 +104,27 @@ class OpenAIAiReplyClient implements AiReplyClient {
         input: [
           {
             role: "user",
-            content: [
-              {
-                type: "input_text",
-                text: formatInput(request)
-              }
-            ]
+            content: buildAiReplyContent(request)
           }
         ],
         store: false
       });
       return limitReply(response.output_text ?? "", this.config.aiMaxReplyChars);
-    } catch {
+    } catch (error) {
+      this.logger?.error?.({
+        err: error,
+        elapsedMs: Date.now() - startedAt,
+        timeoutMs: this.config.openaiRequestTimeoutMs,
+        model: this.config.openaiModel,
+        reasoningEffort: this.config.openaiReasoningEffort,
+        trigger: request.trigger,
+        scopeType: request.scopeType,
+        speakerRole: request.speakerRole,
+        inputChars: request.text.length,
+        instructionChars: request.instructions?.length ?? 0,
+        imageCount: request.images?.length ?? 0,
+        openaiBaseUrl: describeOpenAIBaseUrl(this.config.openaiBaseUrl)
+      }, "OpenAI AI reply failed with upstream error");
       throw new Error("AI 回复失败，请稍后再试。");
     }
   }
@@ -109,6 +135,20 @@ export function buildInstructions(extraInstructions: string | undefined): string
   return trimmed == null || trimmed === ""
     ? DEFAULT_INSTRUCTIONS
     : `${DEFAULT_INSTRUCTIONS}\n\n${trimmed}`;
+}
+
+export function buildAiReplyContent(request: AiReplyRequest): AiReplyContentPart[] {
+  return [
+    {
+      type: "input_text",
+      text: formatAiReplyInput(request)
+    },
+    ...(request.images ?? []).map((image) => ({
+      type: "input_image" as const,
+      image_url: image.imageUrl,
+      detail: image.detail ?? "auto"
+    }))
+  ];
 }
 
 class OpenAIAiImageClient implements AiImageClient {
@@ -164,7 +204,7 @@ function imageModelOptions(
   };
 }
 
-function formatInput(request: AiReplyRequest): string {
+export function formatAiReplyInput(request: AiReplyRequest): string {
   const source = request.trigger === "c2c" && request.scopeType === "group"
     ? "C2C私聊（已绑定QQ群上下文）"
     : request.scopeType === "group" ? "QQ群" : "C2C私聊";
@@ -184,4 +224,14 @@ function limitReply(text: string, maxChars: number): string {
   if (trimmed === "") return "我刚才卡了一下，能再说一遍吗？";
   if (trimmed.length <= maxChars) return trimmed;
   return `${trimmed.slice(0, Math.max(0, maxChars - 3)).trimEnd()}...`;
+}
+
+function describeOpenAIBaseUrl(baseUrl: string): string {
+  if (baseUrl === "") return "default";
+  try {
+    const parsed = new URL(baseUrl);
+    return `${parsed.protocol}//${parsed.host}`;
+  } catch {
+    return "custom";
+  }
 }
